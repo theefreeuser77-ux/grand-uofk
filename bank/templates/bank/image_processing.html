@@ -1,0 +1,66 @@
+{% extends "bank/base.html" %}
+{% block title %}Image processing{% endblock %}
+{% block content %}
+<div class="card">
+  <h2 style="margin-top:0">Image processing</h2>
+  <p>Upload a chapter PDF and download every figure in it as a picture, <b>with its arrows and labels</b>.</p>
+  <ol class="mute" style="margin-top:0">
+    <li>Choose the PDF. For a whole book, write the chapter’s pages below (e.g. <code>120-160</code>).</li>
+    <li>Press <b>Extract figures</b>. A zip downloads with files named by page: <code>p012_fig1.jpg</code> is page 12, first figure from the top.</li>
+    <li>On <b>Import</b>, tap <b>Add image</b> on each question and pick its figure.</li>
+  </ol>
+</div>
+
+{% if error %}<div class="fb bad" role="alert" style="margin-top:12px">{{ error }}</div>{% endif %}
+
+<form method="post" enctype="multipart/form-data" class="card image-processing-form" style="margin-top:12px" data-figure-form>
+  {% csrf_token %}
+  <label class="image-processing-field"><b>Chapter PDF</b>
+    <input type="file" name="pdf" accept=".pdf,application/pdf" required></label>
+
+  <label class="image-processing-field"><b>Pages</b> <span class="mute">(optional — leave empty for all pages)</span>
+    <input type="text" name="pages" value="{{ form.pages }}" placeholder="e.g. 120-160, 175" inputmode="numeric" autocomplete="off"></label>
+
+  <fieldset class="image-processing-field">
+    <legend><b>What to save</b></legend>
+    <label><input type="radio" name="mode" value="figures" {% if form.mode != "pages" %}checked{% endif %}> Figures — each picture with its arrows and labels</label>
+    <label><input type="radio" name="mode" value="pages" {% if form.mode == "pages" %}checked{% endif %}> Whole pages — for scanned books or drawn diagrams; crop them yourself</label>
+  </fieldset>
+
+  <fieldset class="image-processing-field">
+    <legend><b>Extra space around each figure</b> <span class="mute">(labels and arrows are found automatically)</span></legend>
+    <label><input type="radio" name="margin" value="tight" {% if form.margin == "tight" %}checked{% endif %}> Tight</label>
+    <label><input type="radio" name="margin" value="normal" {% if form.margin != "tight" and form.margin != "wide" %}checked{% endif %}> Normal — recommended</label>
+    <label><input type="radio" name="margin" value="wide" {% if form.margin == "wide" %}checked{% endif %}> Wide — only if a label is still cut off</label>
+  </fieldset>
+
+  <button class="btn pri" type="submit" data-figure-submit>Extract figures</button>
+  <p class="mute" data-figure-status role="status" style="margin-bottom:0"></p>
+</form>
+
+<div class="card mute" style="margin-top:12px">
+  <b>Good to know</b>
+  <ul style="margin-bottom:0">
+    <li>Each figure is cut out together with its labels and leader lines, but not the paragraphs around it. If a label is still cut off, run that page again with <b>Wide</b>.</li>
+    <li>Big chapters are done in parts: if the zip has a <code>CONTINUE_FROM_PAGE.txt</code> file, run again from the page it names.</li>
+    <li>Scanned books (each page is one photo) come out as whole pages.</li>
+  </ul>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  // The zip downloads without leaving the page, so say it is working and unlock the button again later.
+  document.querySelector("[data-figure-form]").addEventListener("submit", () => {
+    const button = document.querySelector("[data-figure-submit]");
+    const status = document.querySelector("[data-figure-status]");
+    setTimeout(() => { button.disabled = true; }, 0);
+    button.textContent = "Extracting…";
+    status.textContent = "Working on it — the zip downloads by itself in up to half a minute. Keep this page open.";
+    setTimeout(() => {
+      button.disabled = false;
+      button.textContent = "Extract figures";
+      status.textContent = "If nothing downloaded, check your Downloads or try fewer pages.";
+    }, 30000);
+  });
+</script>
+{% endblock %}

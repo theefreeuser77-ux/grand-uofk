@@ -3525,3 +3525,12 @@ button,.btn{border-radius:5px}
 @media(min-width:900px){
   #exam-runner .exam-question .image-question-layout>.quiz-image-figure{margin:0}
 }
+
+/* Image processing (figure extraction) */
+.image-processing-form{display:grid;gap:16px}
+.image-processing-field{display:grid;gap:6px;margin:0;padding:0;border:0;min-width:0}
+.image-processing-field legend{padding:0;margin-bottom:6px}
+.image-processing-field input[type="text"],.image-processing-field input[type="file"]{width:100%;max-width:420px}
+.image-processing-field label{display:flex;gap:8px;align-items:flex-start;line-height:1.4}
+.image-processing-field label input{margin-top:3px;flex:none}
+.image-processing-form [data-figure-submit]{justify-self:start}

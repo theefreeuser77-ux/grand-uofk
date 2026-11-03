@@ -38,7 +38,7 @@
 <link rel="manifest" href="{% url 'bank:manifest' %}">
 <link rel="icon" type="image/svg+xml" href="{% static 'bank/icons/app-101.svg' %}">
 <link rel="apple-touch-icon" href="{% static 'bank/icons/app-101-192.png' %}">
-<link rel="stylesheet" href="{% static 'bank/style.css' %}?v=20261103-3">
+<link rel="stylesheet" href="{% static 'bank/style.css' %}?v=20261103-4">
 </head>
 <body class="{% block body_class %}{% endblock %}">
 <div class="wrap {% block wrap_class %}{% endblock %}">
@@ -53,6 +53,7 @@
       {% if user.is_authenticated %}<a href="{% url 'bank:saved_home' %}">★ Saved</a>{% endif %}
       {% if user.is_authenticated %}<a href="{% url 'bank:settings' %}"{% if request.resolver_match.url_name == "settings" %} aria-current="page"{% endif %}>Settings</a>{% endif %}
       {% if perms.bank.add_question %}<a href="{% url 'bank:import' %}">Import</a>{% endif %}
+      {% if perms.bank.add_question %}<a href="{% url 'bank:image_processing' %}"{% if request.resolver_match.url_name == "image_processing" %} aria-current="page"{% endif %}>Image processing</a>{% endif %}
       {% if user.is_staff %}<a href="{% url 'bank:subject_backup' %}">Backup</a>{% endif %}
       {% if perms.bank.change_question %}<a href="{% url 'bank:comments' %}">Comments{% if open_comments %}<span class="badge">{{ open_comments }}</span>{% endif %}</a>{% endif %}
       {% if user.is_staff %}<a href="{% url 'bank:sorting_bin' %}">Sorting bin{% if sorting_bin_count %}<span class="badge">{{ sorting_bin_count }}</span>{% endif %}</a><a href="{% url 'bank:review_bin' %}">Review bin{% if review_bin_count %}<span class="badge">{{ review_bin_count }}</span>{% endif %}</a><a href="{% url 'admin:index' %}">Admin</a>{% endif %}

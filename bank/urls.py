@@ -41,6 +41,7 @@ urlpatterns = [
     path("edit/question/<int:pk>/", views.question_edit, name="question_edit"),
     path("edit/question/<int:pk>/delete/", views.question_delete, name="question_delete"),
     path("import/", views.import_questions, name="import"),
+    path("image-processing/", views.image_processing, name="image_processing"),
     path("comments/", views.comments_inbox, name="comments"),
     path("comments/<int:pk>/toggle/", views.comment_toggle, name="comment_toggle"),
 

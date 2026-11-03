@@ -25,7 +25,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_http_methods, require_POST
 
 from . import parser, services
-from . import ai_marking
+from . import ai_marking, figures
 from .forms import (
     ExamTemplateForm, ImageQuestionForm, ImageUploadForm, QuestionForm, option_formset, validate_image_file,
 )
@@ -2639,6 +2639,41 @@ def comment_toggle(request, pk):
     c.resolved_at = timezone.now() if c.resolved else None
     c.save()
     return redirect(safe_next(request, reverse("bank:comments")))
+
+
+# ---------------------------------------------------------------- image processing
+MAX_PDF_BYTES = 80 * 1024 * 1024
+
+
+@perm_required("bank.add_question")
+def image_processing(request):
+    """Turn a chapter PDF into a zip of its figures, arrows and labels included."""
+    form = {"pages": "", "margin": "normal", "mode": "figures"}
+    error = ""
+    if request.method == "POST":
+        form = {key: request.POST.get(key, default).strip() for key, default in form.items()}
+        upload = request.FILES.get("pdf")
+        if not upload:
+            error = "Choose a PDF file first."
+        elif upload.size > MAX_PDF_BYTES:
+            error = "This PDF is larger than 80 MB. Split it into chapters first (iLovePDF → Split PDF)."
+        elif upload.read(5) != b"%PDF-":
+            error = "This file is not a PDF."
+        else:
+            upload.seek(0)
+            source = upload.temporary_file_path() if hasattr(upload, "temporary_file_path") else upload.read()
+            try:
+                data, name, _count, _stopped = figures.extract(
+                    source, pages=form["pages"], margin=form["margin"], whole_pages=form["mode"] == "pages")
+            except figures.FigureError as exc:
+                error = str(exc)
+            else:
+                response = HttpResponse(data, content_type="application/zip")
+                response["Content-Disposition"] = f'attachment; filename="{name}"'
+                return response
+    return render(request, "bank/image_processing.html", {
+        "form": form, "error": error, "margins": figures.MARGINS,
+    }, status=400 if error else 200)
 
 
 # ---------------------------------------------------------------- bulk import

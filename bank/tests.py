@@ -2769,3 +2769,79 @@ class ImportImageTests(Base):
         self.assertContains(response, 'name="image_0"')
         self.assertContains(response, 'data-key="17"')
         self.assertContains(response, "Needs fig_4_12.png")
+
+
+class ImageProcessingTests(Base):
+    @staticmethod
+    def chapter_pdf():
+        """Page 1: a photo with an arrow and label drawn past its edge, plus a tiny icon. Page 2: blank."""
+        import pymupdf
+        from PIL import Image
+        photo = io.BytesIO()
+        Image.new("RGB", (400, 300), "pink").save(photo, "PNG")
+        icon = io.BytesIO()
+        Image.new("RGB", (40, 40), "blue").save(icon, "PNG")
+        doc = pymupdf.open()
+        page = doc.new_page()
+        page.insert_image(pymupdf.Rect(100, 100, 300, 250), stream=photo.getvalue())
+        page.insert_image(pymupdf.Rect(20, 20, 40, 40), stream=icon.getvalue())
+        page.draw_line((250, 180), (330, 180), color=(0, 0, 0), width=2)
+        page.insert_text((335, 185), "X", fontsize=14)
+        doc.new_page()
+        return doc.tobytes()
+
+    def extract(self, **fields):
+        upload = SimpleUploadedFile("chapter.pdf", self.chapter_pdf(), content_type="application/pdf")
+        return self.client.post(reverse("bank:image_processing"), {"pdf": upload, **fields})
+
+    def test_figures_keep_the_arrows_and_labels_drawn_beside_them(self):
+        import zipfile
+        from PIL import Image
+        self.client.force_login(self.editor)
+        self.assertContains(self.client.get(reverse("bank:image_processing")), "Extract figures")
+        sizes = {}
+        for margin in ("tight", "wide"):
+            response = self.extract(margin=margin)
+            self.assertEqual(response["Content-Type"], "application/zip")
+            self.assertIn('filename="figures_p1-2.zip"', response["Content-Disposition"])
+            archive = zipfile.ZipFile(io.BytesIO(response.content))
+            self.assertEqual(archive.namelist(), ["p001_fig1.jpg"])  # the icon is skipped
+            sizes[margin] = Image.open(archive.open("p001_fig1.jpg")).size
+        # The photo is 200pt wide; the arrow and its "X" reach about 245pt from its left edge.
+        # Even Tight follows them, which at 200 dpi is well over the photo's own 556px.
+        self.assertGreater(sizes["tight"][0], 245 * 200 / 72)
+        self.assertGreater(sizes["wide"][0], sizes["tight"][0] + 150)
+
+    def test_body_text_beside_a_figure_is_left_out(self):
+        import pymupdf
+        from PIL import Image
+        from . import figures
+        photo = io.BytesIO()
+        Image.new("RGB", (300, 300), "gray").save(photo, "PNG")
+        doc = pymupdf.open()
+        page = doc.new_page(width=600, height=800)
+        page.insert_image(pymupdf.Rect(320, 100, 560, 340), stream=photo.getvalue())
+        page.insert_text((40, 200), "A long paragraph line of body text in the left column", fontsize=11)
+        page.insert_text((300, 352), "label", fontsize=11)  # overlapping the photo's bottom-left corner
+        rects = figures.figure_rects(doc[0], figures.MARGINS["tight"])
+        self.assertEqual(len(rects), 1)
+        self.assertGreater(rects[0].x0, 280)       # the paragraph on the left is not pulled in
+        self.assertLess(rects[0].x0, 300)          # the label under the corner is
+        self.assertGreater(rects[0].y1, 352)
+
+    def test_whole_pages_and_page_ranges(self):
+        import zipfile
+        self.client.force_login(self.editor)
+        response = self.extract(mode="pages", pages="2")
+        self.assertEqual(zipfile.ZipFile(io.BytesIO(response.content)).namelist(), ["p002.jpg"])
+        self.assertContains(self.extract(pages="2"), "No pictures were found", status_code=400)
+        self.assertContains(self.extract(pages="9"), "only 2 pages", status_code=400)
+
+    def test_rejects_non_pdfs_and_users_who_cannot_import(self):
+        self.client.force_login(self.editor)
+        fake = SimpleUploadedFile("chapter.pdf", b"hello", content_type="application/pdf")
+        self.assertContains(self.client.post(reverse("bank:image_processing"), {"pdf": fake}),
+                            "not a PDF", status_code=400)
+        self.client.force_login(self.student)
+        self.assertEqual(self.client.get(reverse("bank:image_processing")).status_code, 403)
+        self.assertNotContains(self.client.get(reverse("bank:home")), "Image processing")
