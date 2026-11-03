@@ -1,7 +1,7 @@
 from django.contrib import admin
 
 from .forms import OptionFormSet, QuestionForm
-from .models import Comment, Option, Question, QuestionBank, Subject, SubjectSection
+from .models import Book, BookChapter, Comment, Option, Question, QuestionBank, Subject, SubjectSection
 
 
 class OptionInline(admin.TabularInline):
@@ -33,6 +33,20 @@ class QuestionBankAdmin(admin.ModelAdmin):
     list_filter = ("subject", "section", "semester")
     search_fields = ("title",)
     prepopulated_fields = {"slug": ("title",)}
+
+
+class BookChapterInline(admin.TabularInline):
+    model = BookChapter
+    extra = 1
+    fields = ("number", "title")
+
+
+@admin.register(Book)
+class BookAdmin(admin.ModelAdmin):
+    list_display = ("title", "slug")
+    search_fields = ("title",)
+    prepopulated_fields = {"slug": ("title",)}
+    inlines = [BookChapterInline]
 
 
 @admin.register(Question)

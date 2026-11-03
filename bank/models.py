@@ -113,6 +113,44 @@ class QuestionBank(models.Model):
         return reverse("bank:bank_detail", args=[self.slug])
 
 
+class Book(models.Model):
+    """A textbook in the Library (e.g. "Gray's Review"), split into its own chapters.
+
+    Its questions still live in subject decks; the book is a second way in, and its
+    title is the label those questions carry.
+    """
+    title = models.CharField(max_length=100, unique=True)
+    slug = models.SlugField(max_length=120, unique=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["title"]
+
+    def __str__(self):
+        return self.title
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = _unique_slug(Book, self.title, self)
+        super().save(*args, **kwargs)
+
+    def get_absolute_url(self):
+        return reverse("bank:book_detail", args=[self.slug])
+
+
+class BookChapter(models.Model):
+    book = models.ForeignKey(Book, on_delete=models.CASCADE, related_name="chapters")
+    number = models.PositiveSmallIntegerField(default=1)
+    title = models.CharField(max_length=200)
+
+    class Meta:
+        ordering = ["book__title", "number", "id"]
+        constraints = [models.UniqueConstraint(fields=["book", "number"], name="uniq_book_chapter_number")]
+
+    def __str__(self):
+        return f"{self.book.title} › {self.number}. {self.title}"
+
+
 class Question(models.Model):
     MCQ, TF, DESC, IMAGE = "mcq", "tf", "desc", "image"
     IMAGE_IDENTIFY, IMAGE_MCQ = "identify", "mcq"
@@ -153,6 +191,10 @@ class Question(models.Model):
     )
     image_answer_mode = models.CharField(
         max_length=8, choices=IMAGE_ANSWER_CHOICES, default=IMAGE_IDENTIFY,
+    )
+    book_chapter = models.ForeignKey(
+        BookChapter, null=True, blank=True, on_delete=models.SET_NULL, related_name="questions",
+        help_text="Optional: also list this question in a Library book chapter.",
     )
     is_in_sorting_bin = models.BooleanField(default=False)
     sorting_bin_at = models.DateTimeField(null=True, blank=True)

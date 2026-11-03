@@ -249,7 +249,8 @@
 
   function render() {
     const currentQuestion = view === "quiz" ? byId[list[pos]] : null;
-    root.dataset.questionType = QUESTION_TYPE === "saved" && currentQuestion?.kind === "desc"
+    // Saved questions and book chapters mix every question type in one quiz.
+    root.dataset.questionType = ["saved", "book"].includes(QUESTION_TYPE) && currentQuestion?.kind === "desc"
       ? "descriptive" : QUESTION_TYPE;
     root.innerHTML = view === "results" ? results() : question();
     if (view === "quiz") {
@@ -879,7 +880,7 @@
       <div class="nav-wrap quiz-navigation">${navToggle}<div class="nav ${navOpen ? "" : "closed"}">${navOpen ? nav : ""}</div></div>
       <div class="card quiz-question${q.kind === "desc" ? ` flashcard descriptive-question${a && a.res.answer !== undefined ? " is-revealed" : ""}` : ""}${q.kind === "mcq" ? " quiz-question-mcq" : q.kind === "tf" ? " quiz-question-tf" : ""}${figure ? " quiz-question-has-image" : ""}"><div class="qh">
         <div class="quiz-question-context"><span class="qn quiz-position" aria-label="Question ${localPos + 1} of ${ids.length}"><span>${String(localPos + 1).padStart(2, "0")}</span><span class="quiz-position-divider">/</span><span class="quiz-position-total">${String(ids.length).padStart(2, "0")}</span></span>
-          ${isUofKLabel(q.label) ? '<span class="tag quiz-source-badge">U of K</span>' : ""}
+          ${q.label ? `<span class="tag quiz-source-badge">${isUofKLabel(q.label) ? "U of K" : esc(q.label)}</span>` : ""}
           ${q.multi ? '<span class="tag">more than one defensible</span>' : ""}
           ${q.kind === "tf" ? '<span class="tag">True / False</span>' : ""}
           ${q.is_in_sorting_bin ? '<span class="tag">In sorting bin</span>' : ""}${q.is_in_review_bin ? '<span class="tag">In review bin</span>' : ""}${binLabel}${reviewBinLabel}

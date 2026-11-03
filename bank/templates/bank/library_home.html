@@ -1,0 +1,25 @@
+{% extends "bank/base.html" %}
+{% block title %}Library{% endblock %}
+{% block content %}
+<h2 class="pagetitle">📚 Library</h2>
+<p class="mute">Question books, split into their own chapters. Each chapter mixes every question type; the same questions also sit in their subject decks, labelled with the book’s name.</p>
+<div class="grid decks">
+  {% for book in books %}
+  <a class="set" href="{{ book.get_absolute_url }}">
+    <h3>{{ book.title }}</h3>
+    <p>{{ book.n_chapters }} chapter{{ book.n_chapters|pluralize }} · {{ book.n_questions }} question{{ book.n_questions|pluralize }}</p>
+  </a>
+  {% empty %}
+  <div class="card">No books yet.</div>
+  {% endfor %}
+</div>
+{% if perms.bank.add_question %}
+<form method="post" class="card library-add" style="margin-top:16px">
+  {% csrf_token %}
+  <label><b>Add a book</b><br>
+    <input type="text" name="title" maxlength="100" placeholder="e.g. Gray's Review" required></label>
+  <button class="btn pri">Add book</button>
+  {% if error %}<div class="fb bad" role="alert">{{ error }}</div>{% endif %}
+</form>
+{% endif %}
+{% endblock %}

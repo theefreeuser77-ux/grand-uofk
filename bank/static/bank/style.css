@@ -3534,3 +3534,18 @@ button,.btn{border-radius:5px}
 .image-processing-field label{display:flex;gap:8px;align-items:flex-start;line-height:1.4}
 .image-processing-field label input{margin-top:3px;flex:none}
 .image-processing-form [data-figure-submit]{justify-self:start}
+
+/* Library */
+.library-chapters{display:grid;gap:10px}
+.library-chapter{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin:0}
+.library-chapter h3{margin:0;font-size:1.1rem}
+.library-chapter p{margin:4px 0 0}
+.library-chapter-number{display:inline-grid;place-items:center;min-width:2em;height:2em;margin-right:6px;border-radius:99px;background:var(--acc-soft);color:var(--acc);font-size:.85rem}
+.library-chapter-actions{display:flex;flex-wrap:wrap;gap:8px}
+.library-chapter-actions .btn{margin:0}
+.library-add{display:grid;gap:10px}
+.library-add input[type="text"]{width:100%;max-width:420px}
+.library-add-fields{display:flex;flex-wrap:wrap;gap:12px}
+.library-add-fields .library-chapter-number-input{width:90px}
+.library-add .btn{justify-self:start;margin:0}
+.import-book select{max-width:100%}

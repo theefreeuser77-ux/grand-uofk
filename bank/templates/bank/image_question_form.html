@@ -31,6 +31,10 @@
     {% if form.is_lab.help_text %}<span class="mute">{{ form.is_lab.help_text }}</span>{% endif %}
   </div>
   <div class="field">
+    {{ form.book_chapter.label_tag }}{{ form.book_chapter }}{{ form.book_chapter.errors }}
+    <span class="mute">{{ form.book_chapter.help_text }}</span>
+  </div>
+  <div class="field">
     {{ form.stem.label_tag }}{{ form.stem }}{{ form.stem.errors }}
   </div>
   <div class="field">

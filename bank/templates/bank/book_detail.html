@@ -1,0 +1,35 @@
+{% extends "bank/base.html" %}
+{% block title %}{{ book.title }} · Library{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="{% url 'bank:library_home' %}">Library</a> › {{ book.title }}</p>
+<h2 class="pagetitle">{{ book.title }}</h2>
+<div class="library-chapters">
+  {% for chapter in chapters %}
+  <div class="card library-chapter">
+    <div class="library-chapter-copy">
+      <h3><span class="library-chapter-number">{{ chapter.number }}</span> {{ chapter.title }}</h3>
+      <p class="mute">{{ chapter.n_questions }} question{{ chapter.n_questions|pluralize }}</p>
+    </div>
+    <div class="library-chapter-actions">
+      {% if chapter.n_questions %}<a class="btn pri" href="{% url 'bank:book_chapter_quiz' book.slug chapter.pk %}">Practise →</a>{% endif %}
+      {% if perms.bank.add_question %}<a class="btn" href="{% url 'bank:import' %}?book_chapter={{ chapter.pk }}">Import questions</a>{% endif %}
+    </div>
+  </div>
+  {% empty %}
+  <div class="card">No chapters yet.</div>
+  {% endfor %}
+</div>
+{% if perms.bank.add_question %}
+<form method="post" class="card library-add" style="margin-top:16px">
+  {% csrf_token %}
+  <b>Add a chapter</b>
+  <div class="library-add-fields">
+    <label>Number<br><input type="text" name="number" maxlength="3" placeholder="next" inputmode="numeric" pattern="[0-9]*" class="library-chapter-number-input"></label>
+    <label>Chapter name<br><input type="text" name="title" maxlength="200" placeholder="e.g. Thorax" required></label>
+  </div>
+  <button class="btn pri">Add chapter</button>
+  {% if error %}<div class="fb bad" role="alert">{{ error }}</div>{% endif %}
+  <p class="mute" style="margin-bottom:0">To put questions in a chapter, use <b>Import questions</b> on it, or choose the chapter when editing a question. To rename or delete, ask an admin.</p>
+</form>
+{% endif %}
+{% endblock %}

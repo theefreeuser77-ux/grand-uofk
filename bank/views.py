@@ -13,7 +13,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import LoginView, redirect_to_login
 from django.contrib.admin.views.decorators import staff_member_required
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Max, Q
 from django.core.cache import cache
 from django.contrib.sessions.models import Session
 from django.http import FileResponse, HttpResponse, HttpResponseForbidden, JsonResponse
@@ -27,13 +27,14 @@ from django.views.decorators.http import require_http_methods, require_POST
 from . import parser, services
 from . import ai_marking, figures
 from .forms import (
-    ExamTemplateForm, ImageQuestionForm, ImageUploadForm, QuestionForm, option_formset, validate_image_file,
+    ExamTemplateForm, ImageQuestionForm, ImageUploadForm, QuestionForm, label_for_book, option_formset,
+    validate_image_file,
 )
 from .image_storage import (
     ImageStorageError, delete_question_image, image_uploads_enabled, upload_question_image,
 )
 from .models import (
-    AIExamAssessment, Comment, ImageTarget, Option, Question, QuestionBank, QuestionImage,
+    AIExamAssessment, Book, BookChapter, Comment, ImageTarget, Option, Question, QuestionBank, QuestionImage,
     ExamAttempt, ExamTemplate, ExamTemplateChapter, QuestionNote, SavedQuestion, Subject, SubjectSection,
     SEMESTER_CHOICES,
 )
@@ -2181,6 +2182,82 @@ def api_comment(request, pk):
     return JsonResponse({"ok": True})
 
 
+# ---------------------------------------------------------------- library
+LIVE_QUESTIONS = Q(questions__is_in_sorting_bin=False, questions__is_in_review_bin=False)
+
+
+@login_required
+def library_home(request):
+    error = ""
+    if request.method == "POST":
+        if not request.user.has_perm("bank.add_question"):
+            return HttpResponseForbidden("You cannot add books.")
+        title = request.POST.get("title", "").strip()
+        if not title:
+            error = "Write the book’s name."
+        elif len(title) > 100:
+            error = "Keep the book’s name under 100 characters."
+        elif Book.objects.filter(title__iexact=title).exists():
+            error = f"“{title}” is already in the Library."
+        else:
+            book = Book.objects.create(title=title)
+            messages.success(request, f"Added “{book.title}”. Now add its chapters.")
+            return redirect(book)
+    books = Book.objects.annotate(
+        n_chapters=Count("chapters", distinct=True),
+        n_questions=Count("chapters__questions", filter=Q(
+            chapters__questions__is_in_sorting_bin=False, chapters__questions__is_in_review_bin=False,
+        ), distinct=True),
+    )
+    return render(request, "bank/library_home.html", {"books": books, "error": error},
+                  status=400 if error else 200)
+
+
+@login_required
+def book_detail(request, slug):
+    book = get_object_or_404(Book, slug=slug)
+    error = ""
+    if request.method == "POST":
+        if not request.user.has_perm("bank.add_question"):
+            return HttpResponseForbidden("You cannot add chapters.")
+        title = request.POST.get("title", "").strip()
+        number = request.POST.get("number", "").strip()
+        next_number = (book.chapters.aggregate(n=Max("number"))["n"] or 0) + 1
+        if not title:
+            error = "Write the chapter’s name."
+        elif number and not (number.isdigit() and 1 <= int(number) <= 999):
+            error = "The chapter number must be between 1 and 999."
+        elif book.chapters.filter(number=int(number or next_number)).exists():
+            error = f"Chapter {number} already exists in this book."
+        else:
+            chapter = BookChapter.objects.create(book=book, number=int(number or next_number), title=title[:200])
+            messages.success(request, f"Added chapter {chapter.number}. {chapter.title}.")
+            return redirect(book)
+    chapters = book.chapters.annotate(n_questions=Count("questions", filter=LIVE_QUESTIONS))
+    return render(request, "bank/book_detail.html", {"book": book, "chapters": chapters, "error": error},
+                  status=400 if error else 200)
+
+
+@login_required
+@ensure_csrf_cookie
+def book_chapter_quiz(request, slug, chapter_id):
+    chapter = get_object_or_404(BookChapter.objects.select_related("book"), pk=chapter_id, book__slug=slug)
+    return render(request, "bank/quiz.html", _quiz_context(
+        request, title=f"{chapter.book.title} · {chapter.number}. {chapter.title}", key=f"book:{chapter.pk}",
+        api=reverse("bank:api_book_chapter_questions", args=[chapter.pk]),
+        back=chapter.book.get_absolute_url(), review=False, edit_api="",
+        question_type="book", can_sort=False, sort_api=""))
+
+
+@login_required
+def api_book_chapter_questions(request, chapter_id):
+    chapter = get_object_or_404(BookChapter, pk=chapter_id)
+    qs = (chapter.questions.filter(is_in_sorting_bin=False, is_in_review_bin=False)
+          .select_related("image_asset", "answer_image_asset").prefetch_related("options", "image_targets")
+          .order_by("id"))
+    return JsonResponse({"title": chapter.title, "questions": serialize(qs, request.user, include_answers=True)})
+
+
 # ---------------------------------------------------------------- saved section
 def _notes_only(request):
     """Saved pages take ?notes=1 to show only questions the user wrote a note on."""
@@ -2356,6 +2433,7 @@ def _image_question_form(request, bank, image, question=None):
             "answer_image": "",
             "explanation": question.explanation,
             "note": question.note,
+            "book_chapter": question.book_chapter_id,
             "targets_json": json.dumps([
                 {"label": target.label, "answer": target.answer,
                  "x_percent": float(target.x_percent) if target.x_percent is not None else None,
@@ -2377,6 +2455,7 @@ def _image_question_form(request, bank, image, question=None):
         requested_mode = Question.IMAGE_IDENTIFY
     form = ImageQuestionForm(request.POST or None, request.FILES or None, initial=initial or {
         "is_lab": request.GET.get("is_lab") == "1",
+        "book_chapter": request.GET.get("book_chapter") or None,
         "answer_mode": requested_mode,
         "answer": "",
         "targets_json": "[]",
@@ -2446,6 +2525,8 @@ def _image_question_form(request, bank, image, question=None):
                 question.answer_image_asset = None
             question.explanation = form.cleaned_data["explanation"].strip()
             question.note = form.cleaned_data["note"].strip()
+            question.book_chapter = form.cleaned_data["book_chapter"]
+            question.label = label_for_book(question.label, question.book_chapter)
             question.save()
             question.options.all().delete()
             question.image_targets.all().delete()
@@ -2484,6 +2565,8 @@ def _image_question_form(request, bank, image, question=None):
                 add_url += ("&" if "?" in add_url else "?") + "destination=identify"
             if form.cleaned_data["is_lab"]:
                 add_url += ("&" if "?" in add_url else "?") + "is_lab=1"
+            if question.book_chapter_id:
+                add_url += ("&" if "?" in add_url else "?") + f"book_chapter={question.book_chapter_id}"
             if next_url:
                 add_url += ("&" if "?" in add_url else "?") + urlencode({"next": next_url})
             return redirect(add_url)
@@ -2689,6 +2772,8 @@ def import_questions(request):
         "import_to_labs": request.GET.get("import_to_labs") == "1",
         "decks_json": [{"s": d.subject_id, "m": d.semester, "c": d.section_id, "t": d.title}
                        for d in QuestionBank.objects.filter(subject__isnull=False)],
+        "book_chapters": BookChapter.objects.select_related("book"),
+        "book_chapter_id": request.GET.get("book_chapter", ""),
     }
     if request.method != "POST":
         return render(request, "bank/import.html", ctx)
@@ -2730,6 +2815,13 @@ def import_questions(request):
         section_error = "This deck already belongs to a different sub-subject."
     if deck:
         parser.mark_duplicates(result.questions, services.existing_keys(deck, is_lab=import_to_labs))
+    book_chapter_id = request.POST.get("book_chapter", "").strip()
+    book_chapter = (
+        BookChapter.objects.select_related("book").filter(pk=book_chapter_id).first()
+        if book_chapter_id.isdigit() else None
+    )
+    if book_chapter_id and not book_chapter:
+        section_error = section_error or "That Library chapter no longer exists. Choose it again."
 
     if request.POST.get("action") == "commit":
         missing = [n for n, v in (("subject", subject), ("semester", semester), ("deck title", title)) if not v]
@@ -2770,6 +2862,7 @@ def import_questions(request):
                             uploaded.append(images[index].public_id)
                         created, bad, dup = services.save_questions(
                             deck, result.questions, skip_dupes, is_lab=import_to_labs, images=images,
+                            book_chapter=book_chapter,
                         )
                 except Exception as error:
                     for public_id in uploaded:
@@ -2783,9 +2876,10 @@ def import_questions(request):
                 else:
                     destination = "Labs in " if import_to_labs else ""
                     with_images = f" with {len(images)} image(s)" if images else ""
+                    in_book = f" and the Library chapter “{book_chapter}”" if book_chapter else ""
                     messages.success(
-                        request, f"Imported {created} question(s){with_images} into {destination}“{deck.path}”. "
-                                 f"Skipped {bad} with errors and {dup} duplicate(s).")
+                        request, f"Imported {created} question(s){with_images} into {destination}“{deck.path}”"
+                                 f"{in_book}. Skipped {bad} with errors and {dup} duplicate(s).")
                     return redirect(deck)
 
     rows = []
@@ -2805,6 +2899,7 @@ def import_questions(request):
         "section_id": str(section.pk) if section else section_value,
         "selected_section": section,
         "section_error": section_error,
+        "book_chapter_id": str(book_chapter.pk) if book_chapter else book_chapter_id,
         "semester": str(semester or ""), "deck_title": title, "skip_dupes": skip_dupes,
         "deck_exists": deck, "rows": rows, "previewed": True,
         "import_to_labs": import_to_labs,

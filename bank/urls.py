@@ -45,6 +45,12 @@ urlpatterns = [
     path("comments/", views.comments_inbox, name="comments"),
     path("comments/<int:pk>/toggle/", views.comment_toggle, name="comment_toggle"),
 
+    path("library/", views.library_home, name="library_home"),
+    path("library/<slug:slug>/", views.book_detail, name="book_detail"),
+    path("library/<slug:slug>/chapter/<int:chapter_id>/quiz/", views.book_chapter_quiz, name="book_chapter_quiz"),
+    path("api/library/chapter/<int:chapter_id>/questions/", views.api_book_chapter_questions,
+         name="api_book_chapter_questions"),
+
     path("saved/", views.saved_home, name="saved_home"),
     path("saved/subject/<slug:slug>/", views.saved_subject, name="saved_subject"),
     path("saved/deck/<slug:slug>/", views.saved_deck, name="saved_deck"),

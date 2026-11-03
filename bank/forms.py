@@ -3,7 +3,7 @@ import json
 from django import forms
 from django.forms.models import BaseInlineFormSet, inlineformset_factory
 
-from .models import ImageTarget, Option, Question, QuestionBank, QuestionImage
+from .models import BookChapter, ImageTarget, Option, Question, QuestionBank, QuestionImage
 
 
 class ExamTemplateForm(forms.Form):
@@ -128,6 +128,21 @@ def validate_image_file(uploaded):
     return uploaded
 
 
+def book_chapter_field():
+    field = forms.ModelChoiceField(
+        queryset=BookChapter.objects.select_related("book"), required=False,
+        label="Library book chapter", empty_label="Not from a Library book",
+        help_text="Optional: also list this question in a chapter of a Library book.",
+    )
+    field.label_from_instance = str
+    return field
+
+
+def label_for_book(label, chapter):
+    """Questions from a Library book carry its name as their label, unless they already have one."""
+    return label or (chapter.book.title if chapter else "")
+
+
 class QuestionForm(forms.ModelForm):
     answer_image = forms.FileField(
         required=False,
@@ -140,7 +155,7 @@ class QuestionForm(forms.ModelForm):
 
     class Meta:
         model = Question
-        fields = ["bank", "number", "label", "kind", "stem", "answer", "explanation", "note"]
+        fields = ["bank", "number", "label", "book_chapter", "kind", "stem", "answer", "explanation", "note"]
         widgets = {
             "stem": forms.Textarea(attrs={"rows": 3}),
             "answer": forms.Textarea(attrs={"rows": 3}),
@@ -160,9 +175,11 @@ class QuestionForm(forms.ModelForm):
             "subject__order", "semester", "title")
         f.label_from_instance = lambda d: d.path
         f.label = "Deck (subject › semester › title)"
+        self.fields["book_chapter"] = book_chapter_field()
 
     def clean(self):
         cleaned = super().clean()
+        cleaned["label"] = label_for_book(cleaned.get("label", ""), cleaned.get("book_chapter"))
         if (
             cleaned.get("kind") == Question.DESC
             and not (cleaned.get("answer") or "").strip()
@@ -197,6 +214,7 @@ class ImageQuestionForm(forms.Form):
     def __init__(self, *args, has_answer_image=False, **kwargs):
         self.has_answer_image = has_answer_image
         super().__init__(*args, **kwargs)
+        self.fields["book_chapter"] = book_chapter_field()
 
     is_lab = forms.BooleanField(
         label="Import this question to Labs",

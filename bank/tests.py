@@ -16,7 +16,7 @@ from django.utils import timezone
 from .image_storage import delete_question_image, upload_question_image
 from .models import (
     AIExamAssessment, AIRequestQuota, Comment, ExamAttempt, ExamTemplate, ExamTemplateChapter, ImageTarget, Option, Question, QuestionBank,
-    QuestionImage, QuestionNote, SavedQuestion, Subject, SubjectSection,
+    QuestionImage, QuestionNote, SavedQuestion, Subject, SubjectSection, Book, BookChapter,
 )
 from .subject_backup import validate_backup
 
@@ -1874,7 +1874,7 @@ class SavedTests(Base):
 
         page = self.client.get(reverse("bank:saved_quiz", args=[deck.slug]))
         self.assertContains(page, 'data-question-type="saved"')
-        self.assertContains(page, "?v=20261103-4")
+        self.assertContains(page, "?v=20261103-5")
 
         practice = self.client.get(reverse("bank:api_saved_questions", args=[deck.slug])).json()["questions"]
         self.assertEqual([item["id"] for item in practice], [question.pk])
@@ -2856,3 +2856,75 @@ class ResumeActivityTests(Base):
         home = self.client.get(reverse("bank:home"))
         self.assertContains(home, f'data-user-id="{self.student.pk}"')
         self.assertContains(home, "bank/resume_activity")
+
+
+class LibraryTests(Base):
+    def make_book(self):
+        self.client.force_login(self.editor)
+        self.client.post(reverse("bank:library_home"), {"title": "Gray's Review"})
+        book = Book.objects.get()
+        self.client.post(reverse("bank:book_detail", args=[book.slug]), {"title": "Thorax"})
+        self.client.post(reverse("bank:book_detail", args=[book.slug]), {"title": "Abdomen"})
+        return book
+
+    def test_books_and_numbered_chapters_are_added_by_editors_only(self):
+        book = self.make_book()
+        self.assertEqual([(c.number, c.title) for c in book.chapters.all()], [(1, "Thorax"), (2, "Abdomen")])
+        self.assertContains(self.client.post(reverse("bank:book_detail", args=[book.slug]),
+                                             {"number": "2", "title": "Again"}), "already exists", status_code=400)
+        self.assertContains(self.client.post(reverse("bank:library_home"), {"title": "gray's review"}),
+                            "already in the Library", status_code=400)
+        self.client.force_login(self.student)
+        self.assertContains(self.client.get(reverse("bank:library_home")), "Gray&#x27;s Review")
+        self.assertNotContains(self.client.get(reverse("bank:library_home")), "Add a book")
+        self.assertEqual(self.client.post(reverse("bank:library_home"), {"title": "Mine"}).status_code, 403)
+        self.assertEqual(self.client.post(reverse("bank:book_detail", args=[book.slug]),
+                                          {"title": "Mine"}).status_code, 403)
+
+    def test_imported_questions_land_in_their_deck_and_the_book_chapter_with_the_book_label(self):
+        book = self.make_book()
+        thorax = book.chapters.get(number=1)
+        self.client.post(reverse("bank:import"), {
+            "action": "commit", "text": SAMPLE + "\n" + DESCRIPTIVE_SAMPLE, "subject": self.subject.pk,
+            "semester": 1, "deck_title": "Thorax deck", "skip_dupes": "1", "book_chapter": thorax.pk})
+        deck = QuestionBank.objects.get(title="Thorax deck")
+        questions = list(deck.questions.order_by("id"))
+        self.assertEqual(len(questions), 3)
+        self.assertTrue(all(q.book_chapter_id == thorax.pk for q in questions))
+        self.assertTrue(all(q.label == "Gray's Review" for q in questions))  # even the one marked U of K
+
+        # The deck's normal type tabs still have them.
+        mcq_tf = self.client.get(reverse("bank:api_questions", args=[deck.slug]) + "?type=mcq_tf").json()
+        self.assertEqual(len(mcq_tf["questions"]), 2)
+        # The chapter mixes every type in one quiz.
+        self.assertContains(self.client.get(reverse("bank:book_detail", args=[book.slug])), "3 questions")
+        quiz = self.client.get(reverse("bank:book_chapter_quiz", args=[book.slug, thorax.pk]))
+        self.assertContains(quiz, 'data-question-type="book"')
+        api = self.client.get(reverse("bank:api_book_chapter_questions", args=[thorax.pk])).json()
+        self.assertEqual(sorted(q["kind"] for q in api["questions"]), ["desc", "mcq", "tf"])
+        self.assertEqual({q["label"] for q in api["questions"]}, {"Gray's Review"})
+
+        # Moving a question to the review bin takes it out of the chapter too.
+        questions[0].is_in_review_bin = True
+        questions[0].save()
+        api = self.client.get(reverse("bank:api_book_chapter_questions", args=[thorax.pk])).json()
+        self.assertEqual(len(api["questions"]), 2)
+
+    def test_editing_a_question_can_put_it_in_a_book_chapter(self):
+        deck = self.import_sample()
+        book = self.make_book()
+        abdomen = book.chapters.get(number=2)
+        q = deck.questions.get(kind="tf")
+        opts = list(q.options.all())
+        r = self.client.post(reverse("bank:question_edit", args=[q.pk]), {
+            "bank": deck.pk, "number": "1", "kind": "tf", "stem": q.stem, "label": "",
+            "book_chapter": abdomen.pk, "explanation": "", "note": "",
+            "options-TOTAL_FORMS": "2", "options-INITIAL_FORMS": "2",
+            "options-MIN_NUM_FORMS": "0", "options-MAX_NUM_FORMS": "1000",
+            "options-0-id": opts[0].pk, "options-0-question": q.pk, "options-0-text": "yes",
+            "options-0-is_correct": "on",
+            "options-1-id": opts[1].pk, "options-1-question": q.pk, "options-1-text": "no",
+        })
+        self.assertEqual(r.status_code, 302)
+        q.refresh_from_db()
+        self.assertEqual((q.book_chapter_id, q.label), (abdomen.pk, "Gray's Review"))

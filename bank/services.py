@@ -91,14 +91,15 @@ def _number_group(kind):
 
 
 @transaction.atomic
-def save_questions(bank, parsed, skip_duplicates=True, is_lab=False, images=None):
+def save_questions(bank, parsed, skip_duplicates=True, is_lab=False, images=None, book_chapter=None):
     """Persist questions with sequential MCQ/TF and descriptive numbering.
 
     Source NO/number labels are deliberately ignored. Existing questions are
     normalized within their quiz type, then imports continue that type's sequence.
     ``images`` maps an index in ``parsed`` to the QuestionImage attached to it;
     those questions are never skipped as duplicates, since their text alone
-    (e.g. "Identify this tissue") does not identify them.
+    (e.g. "Identify this tissue") does not identify them. With ``book_chapter``
+    the questions are also listed in that Library chapter and labelled with the book.
     """
     images = images or {}
     existing = list(bank.questions.order_by("id"))
@@ -124,9 +125,11 @@ def save_questions(bank, parsed, skip_duplicates=True, is_lab=False, images=None
         key = (is_lab, group)
         next_numbers[key] = next_numbers.get(key, 0) + 1
         q = Question.objects.create(
-            bank=bank, number=str(next_numbers[key]), label=pq.label, kind=pq.kind, stem=pq.stem,
+            bank=bank, number=str(next_numbers[key]), kind=pq.kind, stem=pq.stem,
+            label=book_chapter.book.title if book_chapter else pq.label,
             answer=pq.answer_raw if pq.kind == Question.DESC else "",
             explanation=pq.explanation, note=pq.note, is_lab=is_lab, image_asset=images.get(index),
+            book_chapter=book_chapter,
         )
         Option.objects.bulk_create([
             Option(question=q, text=t, is_correct=c, order=i)
