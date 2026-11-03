@@ -2,7 +2,11 @@
 {% block title %}{{ book.title }} · Library{% endblock %}
 {% block content %}
 <p class="crumbs"><a href="{% url 'bank:library_home' %}">Library</a> › {{ book.title }}</p>
-<h2 class="pagetitle">{{ book.title }}</h2>
+<div class="book-detail-head">
+  <span class="book-cover book-cover-small book-tone-{{ book.cover_tone }}" aria-hidden="true"><span class="book-cover-title">{{ book.title }}</span></span>
+  <div><h2 class="pagetitle">{{ book.title }}</h2>
+    <p class="mute">{{ chapters|length }} chapter{{ chapters|length|pluralize }} · pick one to practise every question type in it</p></div>
+</div>
 <div class="library-chapters">
   {% for chapter in chapters %}
   <div class="card library-chapter">

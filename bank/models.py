@@ -137,6 +137,11 @@ class Book(models.Model):
     def get_absolute_url(self):
         return reverse("bank:book_detail", args=[self.slug])
 
+    @property
+    def cover_tone(self):
+        """Which of the Library's cover colours this book wears; fixed per book."""
+        return (self.pk or 0) % 6
+
 
 class BookChapter(models.Model):
     book = models.ForeignKey(Book, on_delete=models.CASCADE, related_name="chapters")

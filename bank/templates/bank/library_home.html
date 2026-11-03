@@ -3,11 +3,11 @@
 {% block content %}
 <h2 class="pagetitle">📚 Library</h2>
 <p class="mute">Question books, split into their own chapters. Each chapter mixes every question type; the same questions also sit in their subject decks, labelled with the book’s name.</p>
-<div class="grid decks">
+<div class="library-shelf">
   {% for book in books %}
-  <a class="set" href="{{ book.get_absolute_url }}">
-    <h3>{{ book.title }}</h3>
-    <p>{{ book.n_chapters }} chapter{{ book.n_chapters|pluralize }} · {{ book.n_questions }} question{{ book.n_questions|pluralize }}</p>
+  <a class="book-cover book-tone-{{ book.cover_tone }}" href="{{ book.get_absolute_url }}">
+    <span class="book-cover-title">{{ book.title }}</span>
+    <span class="book-cover-meta">{{ book.n_chapters }} chapter{{ book.n_chapters|pluralize }}<br>{{ book.n_questions }} question{{ book.n_questions|pluralize }}</span>
   </a>
   {% empty %}
   <div class="card">No books yet.</div>
