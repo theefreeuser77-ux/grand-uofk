@@ -9,6 +9,7 @@
        data-submit="{{ submit_url }}"
        data-ai-assess="{{ ai_assess_url }}"
        data-share="{{ share_url }}"
+       data-note="{% url 'bank:api_note' 0 %}"
        data-save-template="{{ save_template_url }}"
        data-delete-attempt="{{ delete_attempt_url }}"
        data-practice-again="{{ practice_again_url }}"
@@ -46,4 +47,4 @@
   </div>
 </main>
 {% endblock %}
-{% block scripts %}<script src="{% static 'bank/exam.js' %}?v=20261030-31"></script>{% endblock %}
+{% block scripts %}<script src="{% static 'bank/exam.js' %}?v=20261103-1"></script>{% endblock %}

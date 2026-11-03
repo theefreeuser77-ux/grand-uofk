@@ -25,6 +25,11 @@ ANSWER: F, T
 
 
 class ParserTests(unittest.TestCase):
+    def test_image_line_is_kept_with_its_question(self):
+        question = parse("Q: What is the pathology shown?\nNO: 18\nIMAGE: 18.jpg\nTYPE: DESC\nANSWER: Fatty change\n").questions[0]
+        self.assertEqual((question.image, question.kind, question.answer_raw), ("18.jpg", DESC, "Fatty change"))
+        self.assertTrue(question.ok)
+
     def test_descriptive_flashcard_round_trip(self):
         text = "Q: Explain the resting membrane potential.\nTYPE: DESC\nANSWER: It is the voltage difference across the resting cell membrane.\n"
         question = parse(text).questions[0]

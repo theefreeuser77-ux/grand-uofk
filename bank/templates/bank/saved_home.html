@@ -3,11 +3,12 @@
 {% block content %}
 <h2 class="pagetitle">★ Saved questions</h2>
 <p class="mute">Questions you saved with the ★ button, filed by subject › semester › deck.</p>
+{% include "bank/saved_filter.html" %}
 <div class="blocks">
   {% for s in subjects %}
-  <a class="block {% if not s.n_saved %}empty{% endif %}" href="{% url 'bank:saved_subject' s.slug %}">
+  <a class="block {% if not s.n_saved %}empty{% endif %}" href="{% url 'bank:saved_subject' s.slug %}{% if notes_only %}?notes=1{% endif %}">
     <div class="bname">{{ s.name }}</div>
-    <div class="bmeta">{{ s.n_saved }} saved question{{ s.n_saved|pluralize }}</div>
+    <div class="bmeta">{{ s.n_saved }} {% if notes_only %}question{{ s.n_saved|pluralize }} with notes{% else %}saved question{{ s.n_saved|pluralize }}{% endif %}</div>
   </a>
   {% endfor %}
 </div>

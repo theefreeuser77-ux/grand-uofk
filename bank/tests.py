@@ -16,7 +16,7 @@ from django.utils import timezone
 from .image_storage import delete_question_image, upload_question_image
 from .models import (
     AIExamAssessment, AIRequestQuota, Comment, ExamAttempt, ExamTemplate, ExamTemplateChapter, ImageTarget, Option, Question, QuestionBank,
-    QuestionImage, SavedQuestion, Subject, SubjectSection,
+    QuestionImage, QuestionNote, SavedQuestion, Subject, SubjectSection,
 )
 from .subject_backup import validate_backup
 
@@ -1016,6 +1016,16 @@ class MockExamTests(Base):
         )
         return _start_exam_for_test(template)
 
+    def test_personal_notes_appear_only_after_the_exam_is_submitted(self):
+        attempt = self.create_attempt()
+        QuestionNote.objects.create(user=self.student, question=self.mcq, text="Watch the distractor")
+        api = reverse("bank:api_exam_attempt", args=[attempt.pk])
+        self.assertNotContains(self.client.get(api), "Watch the distractor")
+        self.post_json(reverse("bank:api_exam_submit", args=[attempt.pk]), {"responses": {}})
+        notes = {q["id"]: q["my_note"] for q in self.client.get(api).json()["questions"]}
+        self.assertEqual(notes[self.mcq.pk], "Watch the distractor")
+        self.assertEqual(notes[self.tf.pk], "")
+
     def test_submit_saves_all_exam_answers_in_one_request(self):
         attempt = self.create_attempt()
         tf_answers = {
@@ -1784,6 +1794,45 @@ def _start_exam_for_test(template):
 
 
 class SavedTests(Base):
+    def test_note_is_private_saves_the_question_and_filters_saved_pages(self):
+        deck = self.import_sample()
+        noted, plain = deck.questions.order_by("id")[:2]
+        url = reverse("bank:api_note", args=[noted.pk])
+        self.assertEqual(self.post_json(url, {"text": "x"}).status_code, 401)
+        self.client.force_login(self.student)
+        self.post_json(reverse("bank:api_save", args=[plain.pk]), {})
+        reply = self.post_json(url, {"text": "  Haem = iron + protoporphyrin  "}).json()
+        self.assertEqual(reply, {"note": "Haem = iron + protoporphyrin", "saved": True})
+        self.assertTrue(SavedQuestion.objects.filter(user=self.student, question=noted).exists())
+        self.post_json(url, {"text": "Edited note"})
+        self.assertEqual(QuestionNote.objects.get().text, "Edited note")
+
+        api = self.client.get(reverse("bank:api_questions", args=[deck.slug])).json()["questions"]
+        self.assertEqual({q["id"]: q["my_note"] for q in api}[noted.pk], "Edited note")
+        self.assertEqual({q["id"]: q["my_note"] for q in api}[plain.pk], "")
+
+        saved = self.client.get(reverse("bank:saved_deck", args=[deck.slug]))
+        self.assertContains(saved, plain.stem)
+        self.assertContains(saved, "Edited note")
+        only = self.client.get(reverse("bank:saved_deck", args=[deck.slug]) + "?notes=1")
+        self.assertContains(only, noted.stem)
+        self.assertNotContains(only, plain.stem)
+        self.assertContains(self.client.get(reverse("bank:saved_home") + "?notes=1"), "1 question with notes")
+        self.assertContains(self.client.get(reverse("bank:saved_home")), "2 saved questions")
+        practice = self.client.get(reverse("bank:api_saved_questions", args=[deck.slug]) + "?notes=1").json()
+        self.assertEqual([q["id"] for q in practice["questions"]], [noted.pk])
+        quiz = self.client.get(reverse("bank:saved_quiz", args=[deck.slug]) + "?notes=1")
+        self.assertContains(quiz, f'data-api="{reverse("bank:api_saved_questions", args=[deck.slug])}?notes=1"')
+
+        other = User.objects.create_user("other", password="pw")
+        self.client.force_login(other)
+        api = self.client.get(reverse("bank:api_questions", args=[deck.slug])).json()["questions"]
+        self.assertEqual({q["id"]: q["my_note"] for q in api}[noted.pk], "")
+
+        self.client.force_login(self.student)
+        self.assertEqual(self.post_json(url, {"text": ""}).json(), {"note": "", "saved": True})
+        self.assertFalse(QuestionNote.objects.exists())
+
     def test_save_toggle_and_saved_section(self):
         deck = self.import_sample()
         q = deck.questions.first()
@@ -1818,7 +1867,7 @@ class SavedTests(Base):
 
         page = self.client.get(reverse("bank:saved_quiz", args=[deck.slug]))
         self.assertContains(page, 'data-question-type="saved"')
-        self.assertContains(page, "?v=20261028-7")
+        self.assertContains(page, "?v=20261103-2")
 
         practice = self.client.get(reverse("bank:api_saved_questions", args=[deck.slug])).json()["questions"]
         self.assertEqual([item["id"] for item in practice], [question.pk])
@@ -2605,3 +2654,111 @@ class ImageQuestionTests(Base):
             self.assertRedirects(second_response, reverse("bank:manage_deck", args=[self.deck.slug]))
             delete.assert_called_once_with(image.public_id)
         self.assertFalse(QuestionImage.objects.filter(pk=image.pk).exists())
+
+
+IMAGE_IMPORT_SAMPLE = """Q: Which structure is shown?
+NO: 17
+A. Femoral nerve
+B. Femoral artery
+ANSWER: B
+
+Q: What is the pathology shown?
+NO: 18
+TYPE: DESC
+ANSWER: Fatty change
+
+Q: What is the function of the labelled organ?
+NO: 19
+IMAGE: fig_4_12.png
+TYPE: DESC
+ANSWER: Bile storage
+"""
+
+
+@override_settings(SUPABASE_URL="", SUPABASE_SERVICE_ROLE_KEY="")
+class ImportImageTests(Base):
+    def setUp(self):
+        super().setUp()
+        self.media = tempfile.TemporaryDirectory()
+        self.addCleanup(self.media.cleanup)
+        settings_override = override_settings(DEBUG=True, MEDIA_ROOT=self.media.name)
+        settings_override.enable()
+        self.addCleanup(settings_override.disable)
+        self.client.force_login(self.editor)
+
+    @staticmethod
+    def image(name):
+        from PIL import Image
+
+        output = io.BytesIO()
+        Image.new("RGB", (20, 10), color="teal").save(output, format="PNG")
+        return SimpleUploadedFile(name, output.getvalue(), content_type="image/png")
+
+    def commit(self, text=IMAGE_IMPORT_SAMPLE, **files):
+        return self.client.post(reverse("bank:import"), {
+            "action": "commit", "text": text, "subject": self.subject.pk,
+            "semester": 1, "deck_title": "Pathology figures", "skip_dupes": "1", **files,
+        })
+
+    def stored_files(self):
+        folder = Path(self.media.name) / "question-images"
+        return list(folder.iterdir()) if folder.exists() else []
+
+    def test_images_attach_by_number_image_line_and_per_question_pick(self):
+        response = self.commit(
+            images=[self.image("Q17.png"), self.image("fig_4_12.png")],
+            image_1=self.image("IMG_2034.png"),
+        )
+        self.assertEqual(response.status_code, 302)
+        by_answer = {q.answer or q.options.get(is_correct=True).text: q for q in Question.objects.all()}
+        self.assertEqual(by_answer["Femoral artery"].image_asset.original_name, "Q17.png")
+        self.assertEqual(by_answer["Fatty change"].image_asset.original_name, "IMG_2034.png")
+        self.assertEqual(by_answer["Bile storage"].image_asset.original_name, "fig_4_12.png")
+        # Image questions keep their answer type, so they appear in the normal MCQ and descriptive tabs.
+        self.assertEqual(by_answer["Femoral artery"].kind, Question.MCQ)
+        self.assertEqual(by_answer["Fatty change"].kind, Question.DESC)
+        self.assertEqual(len(self.stored_files()), 3)
+
+    def test_missing_named_image_imports_nothing(self):
+        response = self.commit(images=[self.image("17.png")])
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "no uploaded image matches")
+        self.assertFalse(Question.objects.exists())
+        self.assertEqual(self.stored_files(), [])
+
+    def test_image_matching_no_question_imports_nothing(self):
+        response = self.commit(images=[self.image("fig_4_12.png"), self.image("99.png")])
+        self.assertContains(response, "99.png does not match any question number")
+        self.assertFalse(Question.objects.exists())
+
+    def test_failed_upload_removes_stored_images_and_questions(self):
+        from .image_storage import ImageStorageError, upload_question_image as real_upload
+
+        calls = []
+
+        def flaky_upload(uploaded):
+            calls.append(uploaded.name)
+            if len(calls) == 2:
+                raise ImageStorageError("storage is down")
+            return real_upload(uploaded)
+
+        with patch("bank.views.upload_question_image", side_effect=flaky_upload):
+            response = self.commit(images=[self.image("17.png"), self.image("fig_4_12.png")])
+        self.assertContains(response, "Nothing was imported: storage is down")
+        self.assertFalse(Question.objects.exists())
+        self.assertFalse(QuestionImage.objects.exists())
+        self.assertEqual(self.stored_files(), [])
+
+    def test_question_with_image_is_not_skipped_as_duplicate(self):
+        text = "Q: Identify this tissue.\nTYPE: DESC\nANSWER: Simple squamous epithelium\n"
+        self.commit(text=text)
+        response = self.commit(text=text, image_0=self.image("slide.png"))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(Question.objects.count(), 2)
+        self.assertEqual(Question.objects.exclude(image_asset=None).count(), 1)
+
+    def test_preview_offers_image_pickers(self):
+        response = self.client.post(reverse("bank:import"), {"action": "preview", "text": IMAGE_IMPORT_SAMPLE})
+        self.assertContains(response, 'name="image_0"')
+        self.assertContains(response, 'data-key="17"')
+        self.assertContains(response, "Needs fig_4_12.png")

@@ -17,6 +17,7 @@
   const markedQuestions = new Set();
   const ratingTimers = new Map();
   const ratingSaves = new Map();
+  const noteState = new Map();  // question id -> {open, text, err, msg, busy}; notes appear only after submitting
   let countdown = null;
   let expiresAt = null;
   let aiPollTimer = null;
@@ -85,6 +86,40 @@
         <button type="button" data-rating-key="${escapeHtml(key)}" data-rating="missed" aria-pressed="${rating === "missed"}" class="${rating === "missed" ? "selected" : ""}"><span aria-hidden="true">↻</span> Answers don't match</button>
       </div>
     </div>`;
+  }
+
+  // Personal note, hidden behind a toggle; it is only offered once the exam is submitted.
+  function noteMarkup(question) {
+    if (!("my_note" in question)) return "";
+    const note = noteState.get(question.id) || {};
+    const label = note.open ? "📝 Hide note ▴" : question.my_note ? "📝 Show note" : "📝 Add note";
+    let html = `<div class="cmtwrap exam-note-wrap"><button class="btn${question.my_note ? " has-note" : ""}" type="button" data-note-toggle aria-expanded="${!!note.open}">${label}</button>`;
+    if (note.open) {
+      html += `<div class="cmtbox question-note">
+        <textarea class="question-note-text" rows="4" maxlength="5000" placeholder="Something to remember next time you meet this question…">${escapeHtml(note.text ?? question.my_note)}</textarea>
+        <div class="row" style="margin-top:6px"><span class="mute">Only you see this. Notes are added to your Saved questions.</span>
+          <span>${question.my_note ? `<button class="btn" type="button" data-note-delete ${note.busy ? "disabled" : ""}>Delete</button> ` : ""}<button class="btn pri" type="button" data-note-save ${note.busy ? "disabled" : ""}>${note.busy ? "Saving…" : "Save note"}</button></span></div>
+        ${note.err ? `<div class="fb bad">${escapeHtml(note.err)}</div>` : ""}${note.msg ? `<div class="fb ok">${escapeHtml(note.msg)}</div>` : ""}</div>`;
+    }
+    return html + "</div>";
+  }
+
+  async function saveNote(question, text) {
+    const note = noteState.get(question.id);
+    note.busy = true; note.err = ""; note.msg = "";
+    renderQuestion();
+    try {
+      const data = await fetchJson(root.dataset.note.replace("/0/", `/${question.id}/`), {
+        method: "POST", body: JSON.stringify({text}),
+      });
+      question.my_note = data.note;
+      note.text = data.note;
+      note.msg = data.note ? "✓ Note saved." : "Note deleted.";
+    } catch (error) {
+      note.err = error.message || "Could not save the note.";
+    }
+    note.busy = false;
+    if (getQuestion() === question) renderQuestion();
   }
 
   function renderQuestion() {
@@ -163,6 +198,7 @@
 
     if (review && question.explanation) html += `<div class="fb ok exam-feedback"><strong>Explanation</strong><p>${escapeHtml(question.explanation)}</p></div>`;
     if (review && question.note) html += `<div class="fb warning exam-feedback exam-note"><strong>Note</strong><p>${escapeHtml(question.note)}</p></div>`;
+    if (review) html += noteMarkup(question);
     questionElement.className = `card quiz-question exam-question${question.kind === "desc" ? " flashcard descriptive-question" : ""}${question.kind === "mcq" ? " quiz-question-mcq" : question.kind === "tf" ? " quiz-question-tf" : ""}`;
     questionElement.innerHTML = html;
     position.textContent = state.assessmentMode
@@ -321,7 +357,27 @@
     await Promise.all([...ratingSaves.values()]);
   }
 
+  questionElement.addEventListener("input", event => {
+    if (!event.target.matches("textarea.question-note-text")) return;
+    (noteState.get(getQuestion().id) || {}).text = event.target.value;
+  });
   questionElement.addEventListener("click", event => {
+    const current = getQuestion();
+    if (event.target.closest("[data-note-toggle]")) {
+      const note = noteState.get(current.id) || {};
+      noteState.set(current.id, {open: !note.open, text: current.my_note || ""});
+      renderQuestion();
+      if (!note.open) questionElement.querySelector("textarea.question-note-text")?.focus();
+      return;
+    }
+    if (event.target.closest("[data-note-save]")) {
+      saveNote(current, noteState.get(current.id).text || "");
+      return;
+    }
+    if (event.target.closest("[data-note-delete]")) {
+      if (confirm("Delete your note on this question?")) saveNote(current, "");
+      return;
+    }
     const markButton = event.target.closest("[data-mark-review]");
     if (markButton && !state.submitted) {
       const question = getQuestion();

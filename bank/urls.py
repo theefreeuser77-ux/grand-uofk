@@ -67,6 +67,7 @@ urlpatterns = [
     path("api/question/<int:pk>/review-bin/", views.api_question_review_bin, name="api_question_review_bin"),
     path("api/question/<int:pk>/save/", views.api_save, name="api_save"),
     path("api/question/<int:pk>/comment/", views.api_comment, name="api_comment"),
+    path("api/question/<int:pk>/note/", views.api_note, name="api_note"),
 
     path("accounts/login/", views.SingleSessionLoginView.as_view(), name="login"),
     path("accounts/logout/", views.logout_view, name="logout"),

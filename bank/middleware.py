@@ -23,7 +23,7 @@ class SingleSessionMiddleware:
             path == "/accounts/login/"
             or path == "/accounts/login"
             or path.startswith("/accounts/signup")
-            or path.startswith("/api/question/") and (path.endswith("/save/") or path.endswith("/comment/"))
+            or path.startswith("/api/question/") and (path.endswith(("/save/", "/comment/", "/note/")))
         )
 
         # Signup is disabled; keep the path out of the public site and return 404.

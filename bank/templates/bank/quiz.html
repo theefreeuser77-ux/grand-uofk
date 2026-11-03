@@ -17,10 +17,11 @@
      data-image-target="{% url 'bank:api_image_target' 0 0 %}"
      data-save="{% url 'bank:api_save' 0 %}"
      data-comment="{% url 'bank:api_comment' 0 %}"
+     data-note="{% url 'bank:api_note' 0 %}"
      data-edit="{% if perms.bank.change_question %}{% url 'bank:question_edit' 0 %}?next={{ request.get_full_path|urlencode }}{% endif %}"
      data-auth="{% if user.is_authenticated %}1{% else %}0{% endif %}"
      data-login="{% url 'bank:login' %}?next={{ request.get_full_path|urlencode }}">
   <p class="mute">Loading…</p>
 </div>
 {% endblock %}
-{% block scripts %}<script src="{% static 'bank/quiz.js' %}?v=20261028-7"></script>{% endblock %}
+{% block scripts %}<script src="{% static 'bank/quiz.js' %}?v=20261103-2"></script>{% endblock %}

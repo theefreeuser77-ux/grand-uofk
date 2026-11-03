@@ -6,6 +6,7 @@
   <ol class="mute" style="margin-top:0">
     <li>Copy your raw questions and ask an AI to reformat them with the prompt below.</li>
     <li>Choose a <b>subject</b> and, when available, a <b>sub-subject</b>, then choose the semester and deck title. Paste the AI’s output (or upload a .txt) and press <b>Preview</b>.</li>
+    <li>Questions with images: in the preview, tap <b>Add image</b> on each one, or choose many images at once named after their question numbers (17.jpg).</li>
     <li>Fix anything flagged, then press <b>Import</b>.</li>
   </ol>
   <details>
@@ -19,7 +20,7 @@
 <div class="fb error">No subjects exist yet. Run <code>python manage.py seed_subjects</code> or add them in Admin first.</div>
 {% endif %}
 
-<form method="post" enctype="multipart/form-data" class="card" style="margin-top:12px">
+<form method="post" enctype="multipart/form-data" class="card" style="margin-top:12px" id="import-form">
   {% csrf_token %}
   <div class="trio">
     <label>Subject<br>
@@ -55,7 +56,7 @@
   </p>
   <p class="row" style="justify-content:flex-start">
     <button class="btn" name="action" value="preview">Preview</button>
-    {% if previewed and importable %}<button class="btn pri" name="action" value="commit">Import {{ importable }} question{{ importable|pluralize }}</button>{% endif %}
+    {% if previewed and importable %}<button class="btn pri" name="action" value="commit" data-import-button>Import {{ importable }} question{{ importable|pluralize }}</button>{% endif %}
   </p>
 </form>
 {{ decks_json|json_script:"decks-data" }}
@@ -80,13 +81,33 @@
   <div class="fb error">Text found before the first “Q:” line was ignored (line {{ stray.0.0 }}: “{{ stray.0.1|truncatechars:60 }}”).</div>
   {% endif %}
   {% if not rows %}<div class="fb error">No “Q:” lines found — is the text in the expected format?</div>{% endif %}
+  {% if rows %}
+    {% if image_uploads_enabled %}
+    <div class="import-images">
+      <label class="btn import-file">📷 <span data-bulk-label>Choose images for many questions</span>
+        <input type="file" name="images" accept="image/*" multiple form="import-form" data-bulk-images></label>
+      <p class="mute">Images named after a question number (<code>17.jpg</code>) attach to that question automatically. Or tap <b>Add image</b> on a question. Questions with an image are never skipped as duplicates.</p>
+      <ul class="msgs" data-image-problems></ul>
+    </div>
+    {% else %}
+    <div class="fb info">Image uploads are not configured on this server, so these questions will be imported without images.</div>
+    {% endif %}
+  {% endif %}
   <div class="scroll">
   <table>
     <tr><th>#</th><th>Question</th><th>Type</th><th>Answer</th><th>Status</th></tr>
     {% for r in rows %}
-    <tr class="{% if not r.q.ok %}bad{% elif r.skipped %}skip{% endif %}">
+    <tr class="{% if not r.q.ok %}bad{% elif r.skipped %}skip{% endif %}" data-ok="{% if r.q.ok %}1{% endif %}" data-skipped="{% if r.skipped %}1{% endif %}" data-key="{{ r.image_key }}">
       <td>{{ r.q.number|default:"–" }}</td>
-      <td>{{ r.q.stem|truncatechars:110 }}<div class="mute">{{ r.q.options|length }} option{{ r.q.options|length|pluralize }}</div></td>
+      <td>{{ r.q.stem|truncatechars:110 }}<div class="mute">{{ r.q.options|length }} option{{ r.q.options|length|pluralize }}</div>
+        {% if image_uploads_enabled and r.q.ok %}
+        <div class="import-row-image" data-row-image data-key="{{ r.image_key }}" data-named="{{ r.q.image }}">
+          <img alt="Image for this question" hidden>
+          <label class="btn import-file">📷 <span>Add image</span>
+            <input type="file" name="image_{{ forloop.counter0 }}" accept="image/*" form="import-form"></label>
+          <span class="mute" data-image-status>{% if r.q.image %}Needs {{ r.q.image }}{% endif %}</span>
+        </div>
+        {% endif %}</td>
       <td>{{ r.q.kind|upper }}</td>
       <td>{{ r.answer|default:"–" }}</td>
       <td>
@@ -104,6 +125,7 @@
     {% endfor %}
   </table>
   </div>
+  {% if importable %}<p class="row" style="justify-content:flex-start"><button class="btn pri" form="import-form" name="action" value="commit" data-import-button>Import {{ importable }} question{{ importable|pluralize }}</button></p>{% endif %}
 </div>
 {% endif %}
 {% endblock %}
@@ -132,6 +154,106 @@
   sub.onchange = filterSections;
   sem.onchange = section.onchange = fill;
   filterSections();
+})();
+
+// Preview images: match them to questions, shrink phone photos before upload, and show what will attach.
+(() => {
+  const form = document.getElementById('import-form');
+  const bulk = document.querySelector('[data-bulk-images]');
+  const rows = [...document.querySelectorAll('[data-row-image]')];
+  const problemsList = document.querySelector('[data-image-problems]');
+  const fileInputs = () => [...document.querySelectorAll('input[type=file][form=import-form]')];
+  // Mirrors services.image_key: "17.jpg", "Q17.png", and "017" all become "17".
+  const key = value => {
+    const text = value.trim();
+    const stem = (value.includes('.') ? text.slice(0, text.lastIndexOf('.')) : text).trim().toLowerCase();
+    const match = stem.match(/^q?\s*[-_.]?\s*0*(\d+)$/);
+    return match ? match[1] : stem;
+  };
+
+  const shrink = async file => {
+    if (file.size <= 1.5e6 && /^image\/(png|jpeg|webp|gif)$/.test(file.type)) return file;
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 2000 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+    return blob ? new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', {type: 'image/jpeg'}) : file;
+  };
+  const shrinkInput = async input => {
+    if (!window.DataTransfer || !input.files.length) return;
+    try {
+      const transfer = new DataTransfer();
+      for (const file of input.files) transfer.items.add(await shrink(file));
+      input.files = transfer.files;
+    } catch (error) {
+      console.warn('Could not shrink the chosen image; uploading the original.', error);
+    }
+  };
+
+  const refresh = () => {
+    const byKey = new Map(), used = new Set(), problems = [];
+    for (const file of bulk ? bulk.files : []) {
+      const k = key(file.name);
+      if (byKey.has(k)) problems.push(`Two images match “${k}”: ${byKey.get(k).name} and ${file.name}.`);
+      else byKey.set(k, file);
+    }
+    if (bulk) {
+      document.querySelector('[data-bulk-label]').textContent = bulk.files.length
+        ? `${bulk.files.length} image${bulk.files.length === 1 ? '' : 's'} chosen (tap to change)`
+        : 'Choose images for many questions';
+    }
+    rows.forEach(row => {
+      const input = row.querySelector('input'), img = row.querySelector('img');
+      const status = row.querySelector('[data-image-status]'), label = row.querySelector('label span');
+      const picked = input.files[0], file = picked || byKey.get(row.dataset.key);
+      if (img.src) URL.revokeObjectURL(img.src);
+      img.hidden = !file;
+      if (file) img.src = URL.createObjectURL(file); else img.removeAttribute('src');
+      label.textContent = picked ? 'Change image' : 'Add image';
+      status.className = file || !row.dataset.named ? 'mute' : 'badc';
+      status.textContent = picked ? 'Chosen for this question' : file ? `Matched ${file.name}`
+        : row.dataset.named ? `Needs ${row.dataset.named}` : '';
+      if (!file && row.dataset.named) problems.push(`A question needs “${row.dataset.named}”.`);
+      row.closest('tr').dataset.hasImage = file ? '1' : '';
+    });
+    // Every question's number counts as used, including questions with errors (their images are skipped, not misnamed).
+    document.querySelectorAll('tr[data-key]').forEach(tr => used.add(tr.dataset.key));
+    for (const [k, file] of byKey) if (!used.has(k)) problems.push(`${file.name} does not match any question number.`);
+    problemsList.replaceChildren(...problems.map(text => {
+      const item = document.createElement('li');
+      item.className = 'badc';
+      item.textContent = text;
+      return item;
+    }));
+    const count = [...document.querySelectorAll('tr[data-ok="1"]')]
+      .filter(tr => tr.dataset.skipped !== '1' || tr.dataset.hasImage === '1').length;
+    document.querySelectorAll('[data-import-button]').forEach(button => {
+      button.textContent = `Import ${count} question${count === 1 ? '' : 's'}`;
+      button.disabled = problems.length > 0;
+    });
+  };
+
+  fileInputs().forEach(input => input.addEventListener('change', async () => {
+    await shrinkInput(input);
+    refresh();
+  }));
+  if (rows.length) refresh();
+
+  form.addEventListener('submit', event => {
+    const committing = event.submitter?.value === 'commit';
+    // Previewing again would upload the images for nothing, so only send them with Import.
+    fileInputs().forEach(input => { input.disabled = !committing; });
+    if (committing && fileInputs().some(input => input.files.length)) {
+      // Deferred so the clicked button's value is still submitted.
+      setTimeout(() => document.querySelectorAll('[data-import-button]').forEach(button => {
+        button.disabled = true;
+        button.textContent = 'Uploading… keep this page open';
+      }));
+    }
+  });
 })();
 </script>
 {% endblock %}

@@ -1009,6 +1009,35 @@ code{background:var(--bg);border:1px solid var(--line);border-radius:5px;padding
   .image-answer{padding:7px 11px;border-left:3px solid var(--acc);border-radius:5px;background:var(--card);white-space:pre-line}
   .image-answer-hidden{min-width:145px;color:var(--mute);filter:blur(5px);user-select:none}
   .image-grade{display:flex;align-items:center;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+  /* Questions with an image keep the figure in view while the stem, answers, and feedback scroll.
+     overflow:clip still clips the card but, unlike hidden, does not break position:sticky. */
+  #quiz[data-question-type] .quiz-question.quiz-question-has-image,.quiz-question.quiz-question-has-image{overflow:clip}
+  .image-question-layout>.quiz-image-figure{position:sticky;top:0;z-index:3;margin:0 0 12px;padding:8px 0 6px;background:var(--card)}
+  .image-question-layout .image-stage img{max-height:42vh}
+  .image-question-layout .image-stage.is-calibrated{max-width:min(100%, calc(42vh * var(--image-w-per-h, 1)))}
+  .image-question-layout .image-stage.is-calibrated img{max-height:none}
+  .image-question-side{min-width:0}
+  .image-question-side>.stem:first-child,.image-question-side>.flash-study:first-child{margin-top:0}
+  /* Descriptive cards have no padding of their own; the flashcard pads its content instead. */
+  #quiz[data-question-type="descriptive"] .descriptive-question .image-question-layout{padding:clamp(16px, 4vw, 34px)}
+  #quiz[data-question-type="descriptive"] .image-question-side .flash-study{padding:0}
+  #quiz[data-question-type="descriptive"] .image-question-side .flash-prompt .stem{font-size:clamp(1.3rem, 2.6vw, 1.9rem)}
+  .ai-question-actions{flex-wrap:wrap}
+  .image-chatgpt-hint{flex-basis:100%;margin:6px 0 0;text-align:center;font-size:.82rem}
+  /* Import preview: the file input covers its button so phones open the picker on tap. */
+  .import-file{position:relative;display:inline-flex;align-items:center;gap:6px;overflow:hidden;cursor:pointer}
+  .import-file input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+  .import-images{display:grid;gap:4px;margin:10px 0 14px}
+  .import-images p{margin:0}
+  .import-row-image{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:8px}
+  .import-row-image img{width:64px;height:64px;object-fit:cover;border:1px solid var(--line);border-radius:6px}
+  @media(min-width:900px){
+    .image-question-layout{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(300px,1fr);gap:24px;align-items:start}
+    .image-question-layout>.quiz-image-figure{top:12px;margin:0;padding:0}
+    .image-question-layout .image-stage img{max-height:calc(100vh - 80px)}
+    .image-question-layout .image-stage.is-calibrated{max-width:min(100%, calc((100vh - 80px) * var(--image-w-per-h, 1)))}
+    .image-question-layout .image-stage.is-calibrated img{max-height:none}
+  }
   .image-report{margin:10px 0;padding:8px 12px;border-radius:10px;background:var(--bg)}
   .image-report p{margin:4px 0}
   .image-author-form,.image-question-form{display:grid;gap:14px}
@@ -3472,4 +3501,19 @@ button,.btn{border-radius:5px}
 :root[data-theme="dark"] .site-header::after{background:var(--brand-gold)}
 @media(max-width:640px){
   .wrap{padding:14px 16px 40px}
+}
+
+/* Personal question notes */
+.quiz-comments > .cmtbox{flex-basis:100%}
+.btn.has-note{border-color:var(--warn);color:var(--warn);background:var(--warn-soft)}
+.question-note textarea{border-color:var(--warn)}
+.question-note .row{flex-wrap:wrap;gap:8px}
+.exam-note-wrap{margin-top:14px}
+.saved-filter{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 14px}
+.saved-filter .btn{margin:0}
+.question-note-saved{margin:10px 0;padding:8px 12px;border:1px solid var(--warn);border-radius:8px;background:var(--warn-soft)}
+.question-note-saved summary{cursor:pointer;color:var(--warn);font-weight:600}
+.question-note-saved p{margin:8px 0 2px;white-space:normal}
+@media(max-width:560px){
+  #quiz[data-question-type="mcq_tf"] .quiz-comments > [data-act="note-toggle"]{grid-column:1 / -1}
 }

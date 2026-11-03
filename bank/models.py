@@ -224,6 +224,17 @@ class SavedQuestion(models.Model):
         ordering = ["-created_at"]
 
 
+class QuestionNote(models.Model):
+    """A user's private study note on a question, shown behind a toggle whenever they meet it again."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="question_notes")
+    question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name="user_notes")
+    text = models.TextField(max_length=5000)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["user", "question"], name="uniq_question_note")]
+
+
 class ExamTemplate(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="exam_templates")
     bank = models.ForeignKey(

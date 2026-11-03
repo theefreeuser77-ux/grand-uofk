@@ -1,20 +1,21 @@
 {% extends "bank/base.html" %}
 {% block title %}Saved · {{ subject.name }}{% endblock %}
 {% block content %}
-<p class="crumbs"><a href="{% url 'bank:saved_home' %}">Saved</a> › {{ subject.name }}</p>
+<p class="crumbs"><a href="{% url 'bank:saved_home' %}{% if notes_only %}?notes=1{% endif %}">Saved</a> › {{ subject.name }}</p>
 <h2 class="pagetitle">{{ subject.name }}</h2>
+{% include "bank/saved_filter.html" %}
 {% regroup decks by semester as sems %}
 {% for sem in sems %}
   <h3 class="semband">Semester {{ sem.grouper }}</h3>
   <div class="grid decks">
     {% for d in sem.list %}
-    <a class="set" href="{% url 'bank:saved_deck' d.slug %}">
+    <a class="set" href="{% url 'bank:saved_deck' d.slug %}{% if notes_only %}?notes=1{% endif %}">
       <h3>{{ d.title }}</h3>
-      <p>{{ d.saved_n }} saved question{{ d.saved_n|pluralize }}</p>
+      <p>{{ d.saved_n }} {% if notes_only %}question{{ d.saved_n|pluralize }} with notes{% else %}saved question{{ d.saved_n|pluralize }}{% endif %}</p>
     </a>
     {% endfor %}
   </div>
 {% empty %}
-  <div class="card">Nothing saved in this subject yet.</div>
+  <div class="card">{% if notes_only %}No saved questions with notes in this subject yet.{% else %}Nothing saved in this subject yet.{% endif %}</div>
 {% endfor %}
 {% endblock %}

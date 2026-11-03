@@ -62,6 +62,7 @@
   let reviewNotice = "";
   const tfPending = {};
   const cm = {};
+  const nt = {};  // per-question personal note panel: {open, text, err, msg, busy}
   const notice = {};
 
   const dirtyDraftIds = () => Object.keys(drafts).filter(id => drafts[id].dirty);
@@ -187,6 +188,21 @@
     render();
   }
 
+  async function saveNote(id, text) {
+    const n = nt[id] || (nt[id] = {});
+    n.busy = true; n.err = ""; n.msg = ""; render();
+    const r = await post(url(D.note, id), {text});
+    n.busy = false;
+    if (r.status === 401) notice[id] = "login";
+    else if (r.json && typeof r.json.note === "string") {
+      byId[id].my_note = r.json.note;
+      byId[id].saved = r.json.saved;
+      n.text = r.json.note;
+      n.msg = r.json.note ? "✓ Note saved." : "Note deleted.";
+    } else n.err = (r.json && r.json.error) || "Could not save the note.";
+    render();
+  }
+
   async function sendComment(id) {
     const c = cm[id] || (cm[id] = {});
     const text = (c.text || "").trim();
@@ -225,6 +241,8 @@
     if (view === "quiz") {
       const ta = root.querySelector("textarea.cmt");
       if (ta) ta.addEventListener("input", e => { (cm[list[pos]] || (cm[list[pos]] = {})).text = e.target.value; });
+      const noteText = root.querySelector("textarea.question-note-text");
+      if (noteText) noteText.addEventListener("input", e => { (nt[list[pos]] || (nt[list[pos]] = {})).text = e.target.value; });
     }
     updateResumeActivity();
   }
@@ -242,7 +260,7 @@
     window.scrollTo({top: Math.max(0, scrollTop), behavior: "smooth"});
   }
 
-  function chatGptLink(q, a, target) {
+  function chatGptLink(q, a, targets) {
     let responseLanguage = "en";
     try {
       responseLanguage = JSON.parse(localStorage.getItem(AI_SETTINGS_KEY) || "{}").aiLanguage === "ar"
@@ -258,11 +276,13 @@
         ? "Write your entire response in Arabic. Keep medical terms in English in parentheses where useful."
         : "Write your entire response in English.",
     ];
-    if (target) {
+    if (targets) {
       lines.push(
-        "Question type: Image identification.",
+        "Question type: Image identification (labelled figure).",
         `Question: ${q.stem}`,
-        `Revealed identification answer — ${target.label}: ${target.answer}`,
+        "Labels and their answers:",
+        ...targets.map(target => `${target.label}: ${target.answer || "No answer recorded."}`),
+        "For each structure, explain how to recognize it in this figure and its key relations or features.",
         `Quiz explanation: ${q.explanation || "None provided."}`,
       );
     } else if (q.kind === "desc") {
@@ -302,13 +322,17 @@
       );
     }
     if (a.res.note || q.note) lines.push(`Quiz note: ${a.res.note || q.note}`);
-    if (q.image_url || q.kind === "image" || target) {
-      lines.push("No question image is attached or being sent. Do not guess visual details; explain only what can be inferred from the text.");
+    if (q.image_url) {
+      lines.push(`The question's image is being pasted into this chat (also at ${new URL(q.image_url, location.href).href}). Use it for visual details; if no image has arrived, ask me to paste it instead of guessing.`);
     }
     lines.push("This is for learning only, not for personal diagnosis or treatment.");
     const chatUrl = new URL("https://chatgpt.com/");
     chatUrl.searchParams.set("q", lines.join("\n\n"));
-    return `<a class="btn" href="${esc(chatUrl.href)}" target="_blank" rel="noopener noreferrer">اتونس 😁 ↗</a>`;
+    if (!q.image_url) {
+      return `<a class="btn" href="${esc(chatUrl.href)}" target="_blank" rel="noopener noreferrer">اتونس 😁 ↗</a>`;
+    }
+    return `<a class="btn" href="${esc(chatUrl.href)}" target="_blank" rel="noopener noreferrer" data-copy-image="${esc(q.image_url)}">اتونس 😁 ↗</a>
+      <p class="mute image-chatgpt-hint" data-copy-status>The image is copied when you open ChatGPT: paste it there with Ctrl+V (or long-press → Paste).</p>`;
   }
 
   function feedback(q, a) {
@@ -338,6 +362,21 @@
     if (r.explanation) head += "<p>" + esc(r.explanation) + "</p>";
     if (r.note) head += '<p class="note">⚠ ' + esc(r.note) + "</p>";
     return head + `<div class="ai-question-actions">${chatGptLink(q, a)}</div></div>`;
+  }
+
+  // Personal note: hidden until asked for, so it never gives away the answer by accident.
+  function noteBox(id) {
+    const q = byId[id], n = nt[id] || {};
+    const label = n.open ? "📝 Hide note ▴" : q.my_note ? "📝 Show note" : "📝 Add note";
+    const btn = `<button class="btn${q.my_note ? " has-note" : ""}" data-act="note-toggle" aria-expanded="${!!n.open}">${label}</button>`;
+    if (!n.open) return btn;
+    if (!AUTH) return `${btn}<div class="cmtbox question-note"><p class="mute"><a href="${esc(D.login)}">Log in</a> to keep notes on questions.</p></div>`;
+    const text = n.text ?? q.my_note ?? "";
+    return `${btn}<div class="cmtbox question-note">
+      <textarea class="question-note-text" rows="4" maxlength="5000" placeholder="Something to remember next time you meet this question…">${esc(text)}</textarea>
+      <div class="row" style="margin-top:6px"><span class="mute">Only you see this. Notes are added to your Saved questions.</span>
+        <span>${q.my_note ? `<button class="btn" data-act="note-delete" ${n.busy ? "disabled" : ""}>Delete</button> ` : ""}<button class="btn pri" data-act="note-save" ${n.busy ? "disabled" : ""}>${n.busy ? "Saving…" : "Save note"}</button></span></div>
+      ${n.err ? `<div class="fb bad">${esc(n.err)}</div>` : ""}${n.msg ? `<div class="fb ok">${esc(n.msg)}</div>` : ""}</div>`;
   }
 
   function commentBox(id) {
@@ -660,24 +699,21 @@
       `<button class="${status(j)} ${j === id ? "cur" : ""}" data-act="go" data-p="${blockStart(b) + i}" aria-label="Question ${i + 1}" title="Question ${i + 1}">${i + 1}</button>`).join("");
     const navToggle = `<button class="btn nav-toggle" data-act="toggle-nav" aria-expanded="${navOpen}" title="${navOpen ? "Hide question list" : "Show question list"}">${navOpen ? "▾" : "▸"}</button>`;
     let body = "";
-    const attachedImage = q.image_url ? `<figure class="quiz-image-figure">
-      <div class="image-stage${q.image_width > 0 && q.image_height > 0 ? " is-calibrated" : ""}"${q.image_width > 0 && q.image_height > 0 ? ` style="--image-aspect-ratio:${q.image_width}/${q.image_height};--image-max-width:${78 * q.image_width / q.image_height}vh"` : ""}><img src="${esc(q.image_url)}" alt="Image for question ${localPos + 1} of ${ids.length}" loading="eager"></div>
-      <figcaption><a href="${esc(q.image_url)}" target="_blank" rel="noopener">Open original image</a></figcaption>
-    </figure>` : "";
+    // Every question with an image renders it once, in a column that stays in view (see questionLayout below).
+    const markers = q.kind === "image" ? (q.targets || []).filter(target =>
+      target.x_percent !== null && target.y_percent !== null
+    ).map(target => `<span class="image-marker" style="left:${target.x_percent}%;top:${target.y_percent}%">${esc(target.label)}</span>`).join("") : "";
+    const hasImageDimensions = q.image_width > 0 && q.image_height > 0;
+    const imageStageStyle = hasImageDimensions
+      ? ` style="--image-aspect-ratio:${q.image_width}/${q.image_height};--image-max-width:${78 * q.image_width / q.image_height}vh;--image-w-per-h:${q.image_width / q.image_height}"`
+      : "";
+    const figure = q.image_url ? `<figure class="quiz-image-figure">
+        <div class="image-stage${hasImageDimensions ? " is-calibrated" : ""}"${imageStageStyle}><img src="${esc(q.image_url)}" alt="Image for question ${localPos + 1} of ${ids.length}" loading="eager">
+          ${markers ? `<div class="image-markers" aria-hidden="true">${markers}</div>` : ""}</div>
+        <figcaption><a href="${esc(q.image_url)}" target="_blank" rel="noopener">Open original image</a></figcaption>
+      </figure>` : "";
     if (q.kind === "image") {
       const imageStem = `<div class="stem image-stem">${esc(q.stem)}</div>`;
-      const markers = (q.targets || []).filter(target =>
-        target.x_percent !== null && target.y_percent !== null
-      ).map(target => `<span class="image-marker" style="left:${target.x_percent}%;top:${target.y_percent}%">${esc(target.label)}</span>`).join("");
-      const hasImageDimensions = q.image_width > 0 && q.image_height > 0;
-      const imageStageStyle = hasImageDimensions
-        ? ` style="--image-aspect-ratio:${q.image_width}/${q.image_height};--image-max-width:${78 * q.image_width / q.image_height}vh"`
-        : "";
-      const media = `<figure class="quiz-image-figure">
-        <div class="image-stage${hasImageDimensions ? " is-calibrated" : ""}"${imageStageStyle}><img src="${esc(q.image_url)}" alt="Image for question ${localPos + 1} of ${ids.length}" loading="eager">
-          <div class="image-markers" aria-hidden="true">${markers}</div></div>
-        <figcaption><a href="${esc(q.image_url)}" target="_blank" rel="noopener">Open original image</a></figcaption>
-      </figure>`;
       if (imageIdentify) {
         const targetProgress = S.a[id] && S.a[id].targets || {};
         const answers = (q.targets || []).map(target => {
@@ -692,19 +728,21 @@
             : state.grade
               ? `<span class="tag">${state.grade === "known" ? "Self-rated: identified" : "Self-rated: missed"}</span>` : "";
           const answer = state.revealed
-            ? `<div class="image-answer">${esc(state.answer || "No answer recorded.")}</div>
-              <div class="ai-question-actions">${chatGptLink(question, {
-                res: {answer: state.answer, explanation: question.explanation, note: question.note},
-                payload: {},
-              }, target)}</div>`
+            ? `<div class="image-answer">${esc(state.answer || "No answer recorded.")}</div>`
             : `<div class="image-answer image-answer-hidden" aria-label="Answer hidden"><span>Answer hidden</span></div>`;
           return `<section class="image-target-answer"><div class="image-target-title"><strong>${esc(target.label)}</strong>${answer}</div>
             ${state.revealed ? gradeButtons : revealButton}</section>`;
         }).join("");
-        body = `${media}${imageStem}<div class="image-answer-list"><h3>${review ? "Identification targets and answers" : "Identify the labelled structures"}</h3>${answers}
-          ${review ? "" : `<button class="btn" data-act="reveal-all-image-targets" ${busy ? "disabled" : ""}>Reveal all answers</button>`}</div>`;
+        // One ChatGPT button per figure, covering every revealed label, instead of one per label.
+        const revealedTargets = review ? [] : (q.targets || []).filter(target => targetProgress[target.id]?.revealed)
+          .map(target => ({...target, answer: targetProgress[target.id].answer}));
+        const askChatGpt = revealedTargets.length
+          ? `<div class="ai-question-actions">${chatGptLink(q, {res: {explanation: q.explanation, note: q.note}, payload: {}}, revealedTargets)}</div>`
+          : "";
+        body = `${imageStem}<div class="image-answer-list"><h3>${review ? "Identification targets and answers" : "Identify the labelled structures"}</h3>${answers}
+          ${review ? "" : `<button class="btn" data-act="reveal-all-image-targets" ${busy ? "disabled" : ""}>Reveal all answers</button>`}</div>${askChatGpt}`;
       } else {
-        body = media + imageStem + q.options.map(o => {
+        body = imageStem + q.options.map(o => {
           let cl = review && o.is_correct ? "ok" : "";
           if (a) {
             if (a.res.correct_ids.includes(o.id)) cl = "ok";
@@ -714,7 +752,7 @@
         }).join("");
       }
     } else if (q.kind === "mcq") {
-      body = attachedImage + `<div class="quiz-answer-list">${q.options.map(o => {
+      body = `<div class="quiz-answer-list">${q.options.map(o => {
         let cl = review && o.is_correct ? "ok" : "";
         if (a) {
           if (a.res.correct_ids.includes(o.id)) cl = "ok";
@@ -724,7 +762,7 @@
       }).join("")}</div>`;
     } else if (q.kind === "tf") {
       const pend = tfPending[id] || {};
-      body = attachedImage + `<div class="quiz-answer-list quiz-answer-list-tf">${q.options.map(o => {
+      body = `<div class="quiz-answer-list quiz-answer-list-tf">${q.options.map(o => {
         const chosen = a && !a.revealed ? a.payload.answers[o.id] : pend[o.id];
         const btn = (v, lbl) => {
           let cl = "";
@@ -789,7 +827,6 @@
       ${q.note ? `<p class="note">Note: ${esc(q.note)}</p>` : ""}</div>` : "";
     const descriptiveStudy = q.kind === "desc"
       ? `<section class="flash-study">
-          ${attachedImage}
           <div class="flash-prompt">
             <div class="stem">${esc(q.stem)}</div>
           </div>
@@ -826,7 +863,7 @@
       ${reviewNotice ? `<div class="fb info" role="status">${esc(reviewNotice)}</div>` : ""}
       <div class="bar quiz-progress"><i class="g" style="width:${t.ok / ids.length * 100}%"></i><i class="r" style="width:${t.bad / ids.length * 100}%"></i></div>
       <div class="nav-wrap quiz-navigation">${navToggle}<div class="nav ${navOpen ? "" : "closed"}">${navOpen ? nav : ""}</div></div>
-      <div class="card quiz-question${q.kind === "desc" ? ` flashcard descriptive-question${a && a.res.answer !== undefined ? " is-revealed" : ""}` : ""}${q.kind === "mcq" ? " quiz-question-mcq" : q.kind === "tf" ? " quiz-question-tf" : ""}"><div class="qh">
+      <div class="card quiz-question${q.kind === "desc" ? ` flashcard descriptive-question${a && a.res.answer !== undefined ? " is-revealed" : ""}` : ""}${q.kind === "mcq" ? " quiz-question-mcq" : q.kind === "tf" ? " quiz-question-tf" : ""}${figure ? " quiz-question-has-image" : ""}"><div class="qh">
         <div class="quiz-question-context"><span class="qn quiz-position" aria-label="Question ${localPos + 1} of ${ids.length}"><span>${String(localPos + 1).padStart(2, "0")}</span><span class="quiz-position-divider">/</span><span class="quiz-position-total">${String(ids.length).padStart(2, "0")}</span></span>
           ${isUofKLabel(q.label) ? '<span class="tag quiz-source-badge">U of K</span>' : ""}
           ${q.multi ? '<span class="tag">more than one defensible</span>' : ""}
@@ -839,12 +876,20 @@
         </div>
       </div>
         ${loginNote}
-        ${q.kind === "desc" ? descriptiveStudy : q.kind === "image" ? body : `<div class="stem">${esc(q.stem)}</div>${body}`}${a ? feedback(q, a) : ""}
+        ${questionLayout(figure, `${q.kind === "desc" ? descriptiveStudy : q.kind === "image" ? body : `<div class="stem">${esc(q.stem)}</div>${body}`}${a ? feedback(q, a) : ""}
         ${review && q.source_chapter ? `<p class="mute review-source">Original chapter: ${esc(q.source_chapter)}</p>` : ""}
           ${review ? reviewAnswer : ""}
+          <div class="ctl quiz-controls${q.kind === "desc" ? " flash-controls" : ""}">${prev}<span class="${q.kind === "desc" ? "flash-actions" : ""}">${extra}${next}</span></div>`)}
         ${review && editing[id] ? reviewEditor(id, q) : ""}
-          <div class="ctl quiz-controls${q.kind === "desc" ? " flash-controls" : ""}">${prev}<span class="${q.kind === "desc" ? "flash-actions" : ""}">${extra}${next}</span></div>
-        ${review ? "" : `<div class="cmtwrap quiz-comments">${commentBox(id)}</div>`}</div>`;
+        ${review ? "" : `<div class="cmtwrap quiz-comments">${commentBox(id)} ${noteBox(id)}</div>`}</div>`;
+  }
+
+  // Image questions: the figure stays in view (left column on wide screens, top on phones)
+  // while the stem, answers, and feedback scroll beside or below it.
+  function questionLayout(figure, content) {
+    return figure
+      ? `<div class="image-question-layout">${figure}<div class="image-question-side">${content}</div></div>`
+      : content;
   }
 
   function results() {
@@ -904,6 +949,45 @@
       ${nextBlock} ${allBlocks} <button class="btn" data-act="reset">Reset progress</button></div></div></div></div>`;
   }
 
+  // ChatGPT links cannot carry an image, so copy it to the clipboard for the student to paste.
+  function imageAsPng(src) {
+    return fetch(src, {mode: "cors"}).then(response => {
+      if (!response.ok) throw new Error(`Image request failed (HTTP ${response.status}).`);
+      return response.blob();
+    }).then(blob => blob.type === "image/png" ? blob : createImageBitmap(blob).then(bitmap => {
+      const canvas = document.createElement("canvas");
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      canvas.getContext("2d").drawImage(bitmap, 0, 0);
+      return new Promise((resolve, reject) => canvas.toBlob(png => png ? resolve(png) : reject(new Error("Could not convert the image.")), "image/png"));
+    }));
+  }
+
+  root.addEventListener("click", async e => {
+    const link = e.target.closest("a[data-copy-image]");
+    if (!link) return;
+    e.preventDefault();
+    const status = link.parentElement.querySelector("[data-copy-status]");
+    let copied = false;
+    if (navigator.clipboard?.write && window.ClipboardItem) {
+      try {
+        // Passing the promise keeps the click's user activation, which Safari requires.
+        await navigator.clipboard.write([new ClipboardItem({"image/png": imageAsPng(link.dataset.copyImage)})]);
+        copied = true;
+      } catch (error) {
+        console.warn("Could not copy the question image for ChatGPT.", error);
+      }
+    }
+    const opened = window.open(link.href, "_blank");
+    if (opened) opened.opener = null;
+    if (status) {
+      status.textContent = copied
+        ? "Image copied. Paste it into ChatGPT with Ctrl+V (or long-press → Paste)."
+        : "Couldn't copy the image here. In ChatGPT, attach it from “Open original image”.";
+      if (!opened) status.textContent += " Your browser blocked the new tab; tap the button again.";
+    }
+  });
+
   root.addEventListener("click", e => {
     const b = e.target.closest("[data-act]");
     if (!b || b.disabled) return;
@@ -960,6 +1044,16 @@
       case "save": toggleSave(id); break;
       case "cmtoggle": (cm[id] = cm[id] || {}).open = !(cm[id] || {}).open; if (cm[id].open) cm[id].msg = ""; render(); break;
       case "cmsend": sendComment(id); break;
+      case "note-toggle": {
+        const n = nt[id] = nt[id] || {};
+        n.open = !n.open; n.msg = ""; n.err = "";
+        if (n.open) n.text = byId[id].my_note || "";
+        render();
+        if (n.open) root.querySelector("textarea.question-note-text")?.focus();
+        break;
+      }
+      case "note-save": saveNote(id, (nt[id] && nt[id].text) || ""); break;
+      case "note-delete": if (confirm("Delete your note on this question?")) saveNote(id, ""); break;
       case "finish": resultBlock = currentBlock(); view = "results"; render(); window.scrollTo(0, 0); break;
       case "back": view = "quiz"; pos = blockStart(resultBlock) + Math.max(0, blockList(resultBlock).findIndex(i => status(i) === "new")); render(); break;
       case "jump": pos = list.indexOf(+d.id); view = "quiz"; render(); scrollToCurrentQuestion(); break;

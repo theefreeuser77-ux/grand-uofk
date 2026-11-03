@@ -1,0 +1,4 @@
+<div class="saved-filter" role="group" aria-label="Filter saved questions">
+  <a class="btn{% if not notes_only %} pri{% endif %}" href="{{ request.path }}"{% if not notes_only %} aria-current="true"{% endif %}>All saved</a>
+  <a class="btn{% if notes_only %} pri{% endif %}" href="{{ request.path }}?notes=1"{% if notes_only %} aria-current="true"{% endif %}>📝 With notes only</a>
+</div>

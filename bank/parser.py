@@ -17,6 +17,7 @@ Format (one question per block; blocks start with "Q:"):
     C. 2 beta and 2 gamma chains
     ANSWER: B                          <- MCQ: letter(s) "B" or "A, C"; TF: "TFFTF"
     LABEL: U of K                      <- optional source label, kept separately from NOTE
+    IMAGE: 17.jpg                      <- optional; images named after NO (17.jpg) match without it
     EXPLANATION: HbF = alpha2 gamma2.  <- optional
     NOTE: optional warning shown to the student (ambiguous / incomplete source)
 
@@ -32,7 +33,7 @@ from dataclasses import dataclass, field
 
 FIELD_RE = re.compile(
     r"^\s*(SUBJECT|SECTION|SEMESTER|DECK|BANK|Q|ID|SOURCE_SUBJECT|SOURCE_SEMESTER|SOURCE_DECK|"
-    r"TARGET_SUBJECT|TARGET_SEMESTER|TARGET_DECK|NO|LABEL|TYPE|TOPIC|ANSWER|ANS|EXPLANATION|EXPL|NOTE)\s*:\s*(.*)$", re.I
+    r"TARGET_SUBJECT|TARGET_SEMESTER|TARGET_DECK|NO|LABEL|TYPE|IMAGE|TOPIC|ANSWER|ANS|EXPLANATION|EXPL|NOTE)\s*:\s*(.*)$", re.I
 )
 OPT_RE = re.compile(r"^\s*\(?([A-Ha-h])[\.\)](?:\s+(.*))?$")
 INLINE_OPT_RE = re.compile(r"(?<!\w)([A-Ha-h])\s*[-.)]\s+")
@@ -58,6 +59,7 @@ class ParsedQuestion:
     explanation: str = ""
     note: str = ""
     question_id: str = ""
+    image: str = ""                                  # IMAGE: file name of an image uploaded with the import
     target_subject: str = ""
     target_semester: str = ""
     target_deck: str = ""
@@ -217,6 +219,8 @@ def parse(text):
                 cur.label, fld = val, None
             elif key == "TYPE":
                 cur.type_raw, fld = val, None
+            elif key == "IMAGE":
+                cur.image, fld = val, None
             elif key == "TOPIC":      # no longer used: the deck is the final classification
                 cur.warnings.append("TOPIC line ignored (the deck is the only classification).")
                 fld = None
@@ -398,7 +402,11 @@ Rules:
 - Put "ANSWER:" after the options. Multiple choice: the correct letter(s), e.g. "ANSWER: B" or "ANSWER: A, C".
 - True/False questions (each option is a statement): add "TYPE: TF" under the Q line and give one T or F per statement, e.g. "ANSWER: TFFTF".
 - Descriptive questions: add "TYPE: DESC", omit options, and put the written answer after "ANSWER:".
-- If I gave an answer key use it. If not, work out the answer yourself.
+- Image questions: an image question with options stays MCQ (or TF). An image question with one written
+  answer is "TYPE: DESC" — e.g. "Identify this structure/tissue", "What is the pathology shown?",
+  "What is the function of the labelled structure?". Keep the wording that refers to the image.
+- If I gave an answer key use it. If not, work out the answer yourself. Exception: you cannot see the
+  images, so if an image question has no answer given, leave "ANSWER:" empty and add "NOTE: Answer needed".
 - Add "EXPLANATION:" with one or two sentences on why the answer is right.
 - If the source is incomplete, ambiguous, or has a typo, add "NOTE:" describing the problem. Never invent missing options.
 - Keep the original question number in "NO:" if there is one.

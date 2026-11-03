@@ -5,6 +5,7 @@ import uuid
 from functools import wraps
 from datetime import timedelta
 
+from django import forms
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import logout
@@ -26,14 +27,14 @@ from django.views.decorators.http import require_http_methods, require_POST
 from . import parser, services
 from . import ai_marking
 from .forms import (
-    ExamTemplateForm, ImageQuestionForm, ImageUploadForm, QuestionForm, option_formset,
+    ExamTemplateForm, ImageQuestionForm, ImageUploadForm, QuestionForm, option_formset, validate_image_file,
 )
 from .image_storage import (
     ImageStorageError, delete_question_image, image_uploads_enabled, upload_question_image,
 )
 from .models import (
     AIExamAssessment, Comment, ImageTarget, Option, Question, QuestionBank, QuestionImage,
-    ExamAttempt, ExamTemplate, ExamTemplateChapter, SavedQuestion, Subject, SubjectSection,
+    ExamAttempt, ExamTemplate, ExamTemplateChapter, QuestionNote, SavedQuestion, Subject, SubjectSection,
     SEMESTER_CHOICES,
 )
 from .subject_backup import BackupError, MAX_BACKUP_BYTES, encode_backup, restore_backup
@@ -103,12 +104,18 @@ def service_worker(request):
     return response
 
 
+def _user_notes(user, question_ids):
+    return dict(QuestionNote.objects.filter(user=user, question_id__in=question_ids)
+                .values_list("question_id", "text"))
+
+
 def serialize(questions, user, review=False, include_answers=False):
     qs = list(questions)
-    saved = set()
+    saved, notes = set(), {}
     if user.is_authenticated and qs:
         saved = set(SavedQuestion.objects.filter(user=user, question_id__in=[q.id for q in qs])
                     .values_list("question_id", flat=True))
+        notes = _user_notes(user, [q.id for q in qs])
     data = []
     for q in qs:
         opts = list(q.options.all())
@@ -119,7 +126,7 @@ def serialize(questions, user, review=False, include_answers=False):
         )
         question = {
             "id": q.id, "number": q.number or str(len(data) + 1), "label": q.label, "kind": kind,
-            "stem": q.stem, "saved": q.id in saved, "is_lab": q.is_lab,
+            "stem": q.stem, "saved": q.id in saved, "my_note": notes.get(q.id, ""), "is_lab": q.is_lab,
             "image_answer_mode": q.image_answer_mode if q.kind == Question.IMAGE else None,
             "multi": kind == Question.MCQ and sum(o.is_correct for o in opts) > 1,
             "options": [{"id": o.id, "letter": chr(65 + i), "text": o.text} for i, o in enumerate(opts)],
@@ -1041,6 +1048,10 @@ def _exam_review_data(attempt):
         )
         for index, question in enumerate(ordered)
     ]
+    if attempt.submitted_at is not None:
+        notes = _user_notes(attempt.user, [question.pk for question in ordered])
+        for item in items:
+            item["my_note"] = notes.get(item["id"], "")
     points = 0.0
     missed = []
     assessment_complete = True
@@ -1398,10 +1409,12 @@ def review_deck(request, slug):
 @ensure_csrf_cookie
 def saved_quiz(request, slug):
     bank = get_object_or_404(QuestionBank, slug=slug)
+    notes = "?notes=1" if _notes_only(request) else ""
     return render(request, "bank/quiz.html", _quiz_context(
-        request, title=f"Saved · {bank.title}", key=f"saved:{request.user.pk}:{bank.slug}",
-        api=reverse("bank:api_saved_questions", args=[bank.slug]),
-        back=reverse("bank:saved_deck", args=[bank.slug]), review=False, edit_api="",
+        request, title=f"Saved{' with notes' if notes else ''} · {bank.title}",
+        key=f"saved{'-notes' if notes else ''}:{request.user.pk}:{bank.slug}",
+        api=reverse("bank:api_saved_questions", args=[bank.slug]) + notes,
+        back=reverse("bank:saved_deck", args=[bank.slug]) + notes, review=False, edit_api="",
         question_type="saved", can_sort=False, sort_api=""))
 
 
@@ -2067,7 +2080,7 @@ def api_image_target(request, pk, target_pk):
 @login_required
 def api_saved_questions(request, slug):
     bank = get_object_or_404(QuestionBank, slug=slug)
-    qs = (bank.questions.filter(saved_by__user=request.user, is_in_sorting_bin=False, is_in_review_bin=False)
+    qs = (bank.questions.filter(_saved_question_filter(request.user, _notes_only(request)), is_in_review_bin=False)
           .select_related("image_asset", "answer_image_asset").prefetch_related("options", "image_targets").order_by("id"))
     return JsonResponse({
         "title": bank.title,
@@ -2131,6 +2144,27 @@ def api_save(request, pk):
 
 
 @require_POST
+def api_note(request, pk):
+    """Set the user's private note on a question; empty text deletes it.
+
+    Writing a note also saves the question, so noted questions show up under Saved.
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "login"}, status=401)
+    q = get_object_or_404(Question, pk=pk)
+    data = json_body(request) or {}
+    text = str(data.get("text", "")).strip()
+    if len(text) > 5000:
+        return JsonResponse({"error": "Note is too long (max 5000 characters)."}, status=400)
+    if not text:
+        QuestionNote.objects.filter(user=request.user, question=q).delete()
+        return JsonResponse({"note": "", "saved": SavedQuestion.objects.filter(user=request.user, question=q).exists()})
+    QuestionNote.objects.update_or_create(user=request.user, question=q, defaults={"text": text})
+    SavedQuestion.objects.get_or_create(user=request.user, question=q)
+    return JsonResponse({"note": text, "saved": True})
+
+
+@require_POST
 def api_comment(request, pk):
     if not request.user.is_authenticated:
         return JsonResponse({"error": "login"}, status=401)
@@ -2146,38 +2180,52 @@ def api_comment(request, pk):
 
 
 # ---------------------------------------------------------------- saved section
-def _saved_decks(user):
+def _notes_only(request):
+    """Saved pages take ?notes=1 to show only questions the user wrote a note on."""
+    return request.GET.get("notes") == "1"
+
+
+def _saved_question_filter(user, notes_only, prefix=""):
+    lookup = Q(**{f"{prefix}saved_by__user": user, f"{prefix}is_in_sorting_bin": False})
+    if notes_only:
+        lookup &= Q(**{f"{prefix}id__in": QuestionNote.objects.filter(user=user).values("question_id")})
+    return lookup
+
+
+def _saved_decks(user, notes_only=False):
     return QuestionBank.objects.annotate(
-        saved_n=Count(
-            "questions__saved_by",
-            filter=Q(questions__saved_by__user=user, questions__is_in_sorting_bin=False),
-            distinct=True,
-        )
+        saved_n=Count("questions__saved_by", filter=_saved_question_filter(user, notes_only, "questions__"),
+                      distinct=True)
     ).filter(saved_n__gt=0)
 
 
 @login_required
 def saved_home(request):
+    notes_only = _notes_only(request)
     subjects = Subject.objects.annotate(
         n_saved=Count("decks__questions__saved_by",
-                      filter=Q(decks__questions__saved_by__user=request.user,
-                               decks__questions__is_in_sorting_bin=False), distinct=True))
-    return render(request, "bank/saved_home.html", {"subjects": subjects})
+                      filter=_saved_question_filter(request.user, notes_only, "decks__questions__"), distinct=True))
+    return render(request, "bank/saved_home.html", {"subjects": subjects, "notes_only": notes_only})
 
 
 @login_required
 def saved_subject(request, slug):
+    notes_only = _notes_only(request)
     subject = get_object_or_404(Subject, slug=slug)
-    decks = _saved_decks(request.user).filter(subject=subject).order_by("semester", "title")
-    return render(request, "bank/saved_subject.html", {"subject": subject, "decks": decks})
+    decks = _saved_decks(request.user, notes_only).filter(subject=subject).order_by("semester", "title")
+    return render(request, "bank/saved_subject.html", {"subject": subject, "decks": decks, "notes_only": notes_only})
 
 
 @login_required
 def saved_deck(request, slug):
+    notes_only = _notes_only(request)
     bank = get_object_or_404(QuestionBank.objects.select_related("subject"), slug=slug)
-    qs = (bank.questions.filter(saved_by__user=request.user, is_in_sorting_bin=False)
-          .prefetch_related("options").order_by("id"))
-    return render(request, "bank/saved_deck.html", {"bank": bank, "questions": qs})
+    qs = list(bank.questions.filter(_saved_question_filter(request.user, notes_only))
+              .prefetch_related("options").order_by("id"))
+    notes = _user_notes(request.user, [q.id for q in qs])
+    for q in qs:
+        q.my_note = notes.get(q.id, "")
+    return render(request, "bank/saved_deck.html", {"bank": bank, "questions": qs, "notes_only": notes_only})
 
 
 @login_required
@@ -2652,15 +2700,55 @@ def import_questions(request):
         elif missing:
             messages.error(request, "Please choose the " + ", ".join(missing) + ".")
         else:
-            deck = services.get_or_create_deck(subject, semester, title, section)
-            created, bad, dup = services.save_questions(
-                deck, result.questions, skip_dupes, is_lab=import_to_labs,
+            picked = {
+                int(name[6:]): upload for name, upload in request.FILES.items()
+                if name.startswith("image_") and name[6:].isdigit()
+            }
+            assigned, problems = services.match_import_images(
+                result.questions, request.FILES.getlist("images"), picked,
             )
-            destination = "Labs in " if import_to_labs else ""
-            messages.success(
-                request, f"Imported {created} question(s) into {destination}“{deck.path}”. "
-                         f"Skipped {bad} with errors and {dup} duplicate(s).")
-            return redirect(deck)
+            if assigned and not image_uploads_enabled():
+                problems.insert(0, "Image uploads are not configured on this server.")
+            for index, upload in assigned.items():
+                try:
+                    validate_image_file(upload)
+                except forms.ValidationError as error:
+                    problems.append(f"{upload.name}: {' '.join(error.messages)}")
+            if problems:
+                for problem in problems:
+                    messages.error(request, problem)
+                if request.FILES:
+                    messages.error(request, "Nothing was imported. Choose the images again after fixing this.")
+            else:
+                uploaded = []
+                try:
+                    # Questions are only saved once every image is stored; on failure the
+                    # database rolls back and the already-stored files are removed.
+                    with transaction.atomic():
+                        deck = services.get_or_create_deck(subject, semester, title, section)
+                        images = {}
+                        for index, upload in sorted(assigned.items()):
+                            images[index] = _create_question_image(deck, upload)
+                            uploaded.append(images[index].public_id)
+                        created, bad, dup = services.save_questions(
+                            deck, result.questions, skip_dupes, is_lab=import_to_labs, images=images,
+                        )
+                except Exception as error:
+                    for public_id in uploaded:
+                        try:
+                            delete_question_image(public_id)
+                        except (ImageStorageError, ValueError, OSError):
+                            pass
+                    if not isinstance(error, (ImageStorageError, ValueError, OSError)):
+                        raise
+                    messages.error(request, f"Nothing was imported: {error}")
+                else:
+                    destination = "Labs in " if import_to_labs else ""
+                    with_images = f" with {len(images)} image(s)" if images else ""
+                    messages.success(
+                        request, f"Imported {created} question(s){with_images} into {destination}“{deck.path}”. "
+                                 f"Skipped {bad} with errors and {dup} duplicate(s).")
+                    return redirect(deck)
 
     rows = []
     for q in result.questions:
@@ -2670,7 +2758,10 @@ def import_questions(request):
             ans = "".join("T" if c else "F" for c in q.correct)
         else:
             ans = ", ".join(chr(65 + i) for i, c in enumerate(q.correct) if c)
-        rows.append({"q": q, "answer": ans, "skipped": bool(q.duplicate_of) and skip_dupes})
+        rows.append({
+            "q": q, "answer": ans, "skipped": bool(q.duplicate_of) and skip_dupes,
+            "image_key": services.image_key(q.image) if q.image else services.image_key(q.number) if q.number else "",
+        })
     ctx.update({
         "text": text, "subject_id": str(subject.pk) if subject else "",
         "section_id": str(section.pk) if section else section_value,
@@ -2683,6 +2774,7 @@ def import_questions(request):
         "n_errors": sum(1 for r in rows if not r["q"].ok),
         "n_dupes": sum(1 for r in rows if r["q"].duplicate_of),
         "stray": result.stray,
+        "image_uploads_enabled": image_uploads_enabled(),
     })
     return render(request, "bank/import.html", ctx)
 

@@ -1,21 +1,23 @@
 {% extends "bank/base.html" %}
 {% block title %}Saved · {{ bank.title }}{% endblock %}
 {% block content %}
-<p class="crumbs"><a href="{% url 'bank:saved_home' %}">Saved</a>
-  {% if bank.subject %}› <a href="{% url 'bank:saved_subject' bank.subject.slug %}">{{ bank.subject.name }}</a>{% endif %}
+<p class="crumbs"><a href="{% url 'bank:saved_home' %}{% if notes_only %}?notes=1{% endif %}">Saved</a>
+  {% if bank.subject %}› <a href="{% url 'bank:saved_subject' bank.subject.slug %}{% if notes_only %}?notes=1{% endif %}">{{ bank.subject.name }}</a>{% endif %}
   › Semester {{ bank.semester }}</p>
 <div class="row" style="margin-top:0"><h2 class="pagetitle" style="margin:0">{{ bank.title }}</h2>
-  {% if questions %}<a class="btn pri" href="{% url 'bank:saved_quiz' bank.slug %}">Practise saved questions</a>{% endif %}</div>
+  {% if questions %}<a class="btn pri" href="{% url 'bank:saved_quiz' bank.slug %}{% if notes_only %}?notes=1{% endif %}">Practise {% if notes_only %}questions with notes{% else %}saved questions{% endif %}</a>{% endif %}</div>
+{% include "bank/saved_filter.html" %}
 {% for q in questions %}
 <div class="card" style="margin-top:10px">
   <div class="qh"><span class="qn">Q{{ q.number|default:q.pk }}</span></div>
   <div class="stem">{{ q.stem }}</div>
   <ul class="w">{% for o in q.options.all %}<li><b>{{ forloop.counter0|add:65|stringformat:"c" }}.</b> <span>{{ o.text }}</span></li>{% endfor %}</ul>
+  {% if q.my_note %}<details class="question-note-saved"><summary>📝 Show note</summary><p>{{ q.my_note|linebreaksbr }}</p></details>{% endif %}
   <form method="post" action="{% url 'bank:saved_remove' q.pk %}">{% csrf_token %}
-    <input type="hidden" name="next" value="{{ request.path }}">
+    <input type="hidden" name="next" value="{{ request.get_full_path }}">
     <button class="btn">Remove from saved</button></form>
 </div>
 {% empty %}
-<div class="card">No saved questions in this deck.</div>
+<div class="card">{% if notes_only %}No saved questions with notes in this deck.{% else %}No saved questions in this deck.{% endif %}</div>
 {% endfor %}
 {% endblock %}
