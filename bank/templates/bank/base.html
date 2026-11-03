@@ -194,7 +194,8 @@
      data-url="{{ active_exam_resume.url }}"
      data-updated-at="{{ active_exam_resume.started_at }}"></div>
 {% endif %}
-<aside id="resume-activity" class="resume-activity" aria-label="Active quiz" hidden>
+{% if user.is_authenticated %}
+<aside id="resume-activity" class="resume-activity" aria-label="Active quiz" data-user-id="{{ user.pk }}" hidden>
   <div class="resume-activity-copy">
     <strong id="resume-activity-title"></strong>
     <span id="resume-activity-subtitle"></span>
@@ -202,7 +203,8 @@
   <a id="resume-activity-return" class="btn pri" href="#">Go back to quiz</a>
   <button id="resume-activity-exit" class="btn" type="button">Exit quiz</button>
 </aside>
+{% endif %}
 {% block scripts %}{% endblock %}
-<script src="{% static 'bank/resume_activity.js' %}?v=2"></script>
+{% if user.is_authenticated %}<script src="{% static 'bank/resume_activity.js' %}?v=3"></script>{% endif %}
 </body>
 </html>

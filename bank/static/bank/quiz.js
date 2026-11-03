@@ -5,8 +5,10 @@
   if (!root) return;
   const D = root.dataset;
   const QUESTION_TYPE = D.questionType;
-  const KEY = "gd:" + D.key;
-  const ACTIVE_KEY = "gd:activeQuiz";
+  // Progress and the "go back to quiz" reminder belong to the signed-in account: several
+  // accounts can share one browser, and its storage is shared between them.
+  const KEY = "gd:" + (D.userId ? `u${D.userId}:` : "") + D.key;
+  const ACTIVE_KEY = `gd:activeQuiz:${D.userId}`;
   const AI_SETTINGS_KEY = `gd:settings:${D.userId}`;
   const AUTH = D.auth === "1";
   const BLOCK_SIZE = 50;
@@ -25,7 +27,15 @@
   };
 
   let S = {a: {}, order: null, retry: null, retryBlock: 0, removed: []};
-  try { S = JSON.parse(localStorage.getItem(KEY)) || S; } catch (e) {}
+  try {
+    // Progress saved before keys named the account moves to the first account that opens it.
+    const legacy = "gd:" + D.key;
+    if (D.userId && localStorage.getItem(KEY) === null && localStorage.getItem(legacy) !== null) {
+      localStorage.setItem(KEY, localStorage.getItem(legacy));
+      localStorage.removeItem(legacy);
+    }
+    S = JSON.parse(localStorage.getItem(KEY)) || S;
+  } catch (e) {}
   if (!S.a) S.a = {};
   if (!S.order) S.order = null;
   if (!Array.isArray(S.retry)) S.retry = null;

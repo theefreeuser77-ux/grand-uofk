@@ -6,7 +6,8 @@
   const exitButton = document.getElementById("resume-activity-exit");
   const title = document.getElementById("resume-activity-title");
   const subtitle = document.getElementById("resume-activity-subtitle");
-  const activeKey = "gd:activeQuiz";
+  const activeKey = `gd:activeQuiz:${widget.dataset.userId}`;
+  try { localStorage.removeItem("gd:activeQuiz"); } catch (error) {}  // old reminder shared by every account
   const dismissedKey = "gd:dismissedExams";
   let activity = null;
   let activityType = null;

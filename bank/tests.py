@@ -1874,7 +1874,7 @@ class SavedTests(Base):
 
         page = self.client.get(reverse("bank:saved_quiz", args=[deck.slug]))
         self.assertContains(page, 'data-question-type="saved"')
-        self.assertContains(page, "?v=20261103-3")
+        self.assertContains(page, "?v=20261103-4")
 
         practice = self.client.get(reverse("bank:api_saved_questions", args=[deck.slug])).json()["questions"]
         self.assertEqual([item["id"] for item in practice], [question.pk])
@@ -2845,3 +2845,14 @@ class ImageProcessingTests(Base):
         self.client.force_login(self.student)
         self.assertEqual(self.client.get(reverse("bank:image_processing")).status_code, 403)
         self.assertNotContains(self.client.get(reverse("bank:home")), "Image processing")
+
+
+class ResumeActivityTests(Base):
+    def test_resume_button_is_tied_to_the_signed_in_account(self):
+        login = self.client.get(reverse("bank:login"))
+        self.assertNotContains(login, 'id="resume-activity"')
+        self.assertNotContains(login, "bank/resume_activity")
+        self.client.force_login(self.student)
+        home = self.client.get(reverse("bank:home"))
+        self.assertContains(home, f'data-user-id="{self.student.pk}"')
+        self.assertContains(home, "bank/resume_activity")
