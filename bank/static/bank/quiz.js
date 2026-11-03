@@ -12,6 +12,7 @@
   const AI_SETTINGS_KEY = `gd:settings:${D.userId}`;
   const AUTH = D.auth === "1";
   const BLOCK_SIZE = 50;
+  const MIXED_TYPES = ["saved", "book", "labs"];
   const esc = s => String(s).replace(/[&<>\"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
   const answerImage = q => q.answer_image_url
     ? `<figure class="answer-image-figure"><img src="${esc(q.answer_image_url)}" alt="Answer image"></figure>` : "";
@@ -241,7 +242,7 @@
         Block ${b + 1}<span class="mute"> · ${ids.length}</span>${done ? " ✓" : ""}
         <span class="mute"> (${t.ok}/${ids.length})</span></button>`;
     }).join(" ");
-    const mcqTfNav = QUESTION_TYPE === "mcq_tf";
+    const mcqTfNav = root.dataset.questionType === "mcq_tf";
     const navStyle = mcqTfNav ? "" : ' style="margin:0 0 10px;justify-content:flex-start;gap:6px;flex-wrap:wrap"';
     return `<div class="row${mcqTfNav ? " quiz-block-nav" : ""}"${navStyle}>
       <span class="mute">Blocks:</span>${toggle}${blockNavOpen ? buttons : summary}${resetBlock}</div>`;
@@ -249,9 +250,11 @@
 
   function render() {
     const currentQuestion = view === "quiz" ? byId[list[pos]] : null;
-    // Saved questions and book chapters mix every question type in one quiz.
-    root.dataset.questionType = ["saved", "book"].includes(QUESTION_TYPE) && currentQuestion?.kind === "desc"
-      ? "descriptive" : QUESTION_TYPE;
+    // Saved questions, book chapters and Labs mix every question type in one quiz;
+    // each question wears the layout of the regular tab it belongs to.
+    root.dataset.questionType = MIXED_TYPES.includes(QUESTION_TYPE) && currentQuestion
+      ? ({desc: "descriptive", mcq: "mcq_tf", tf: "mcq_tf"}[currentQuestion.kind] || "image")
+      : QUESTION_TYPE;
     root.innerHTML = view === "results" ? results() : question();
     if (view === "quiz") {
       const ta = root.querySelector("textarea.cmt");
