@@ -2140,6 +2140,7 @@ def api_save(request, pk):
         SavedQuestion.objects.get_or_create(user=request.user, question=q)
     else:
         existing.delete()
+        QuestionNote.objects.filter(user=request.user, question=q).delete()  # a note always lives in Saved
     return JsonResponse({"saved": bool(want)})
 
 
@@ -2147,7 +2148,8 @@ def api_save(request, pk):
 def api_note(request, pk):
     """Set the user's private note on a question; empty text deletes it.
 
-    Writing a note also saves the question, so noted questions show up under Saved.
+    Writing a note also saves the question, and un-saving deletes the note,
+    so every noted question shows up under Saved.
     """
     if not request.user.is_authenticated:
         return JsonResponse({"error": "login"}, status=401)
@@ -2232,6 +2234,7 @@ def saved_deck(request, slug):
 @require_POST
 def saved_remove(request, pk):
     SavedQuestion.objects.filter(user=request.user, question_id=pk).delete()
+    QuestionNote.objects.filter(user=request.user, question_id=pk).delete()
     return redirect(safe_next(request, reverse("bank:saved_home")))
 
 

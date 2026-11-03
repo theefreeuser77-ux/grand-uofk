@@ -97,7 +97,7 @@
     if (note.open) {
       html += `<div class="cmtbox question-note">
         <textarea class="question-note-text" rows="4" maxlength="5000" placeholder="Something to remember next time you meet this question…">${escapeHtml(note.text ?? question.my_note)}</textarea>
-        <div class="row" style="margin-top:6px"><span class="mute">Only you see this. Notes are added to your Saved questions.</span>
+        <div class="row" style="margin-top:6px"><span class="mute">Only you see this. Questions with notes are kept in your Saved questions.</span>
           <span>${question.my_note ? `<button class="btn" type="button" data-note-delete ${note.busy ? "disabled" : ""}>Delete</button> ` : ""}<button class="btn pri" type="button" data-note-save ${note.busy ? "disabled" : ""}>${note.busy ? "Saving…" : "Save note"}</button></span></div>
         ${note.err ? `<div class="fb bad">${escapeHtml(note.err)}</div>` : ""}${note.msg ? `<div class="fb ok">${escapeHtml(note.msg)}</div>` : ""}</div>`;
     }
@@ -128,19 +128,21 @@
     const review = state.submitted;
     const response = question.response || {};
     const marked = markedQuestions.has(question.id);
-    let html = `<div class="qh">
+    const head = `<div class="qh">
       <div class="quiz-question-context">
       <span class="qn quiz-position"><span>${String(examQuestionNumber(question)).padStart(2, "0")}</span><span class="quiz-position-divider">/</span><span class="quiz-position-total">${String(state.allQuestions.length || state.questions.length).padStart(2, "0")}</span></span>
       <span class="tag">${escapeHtml(question.kind === "desc" ? "Descriptive" : question.kind === "identify" ? "Identify" : question.kind === "mcq" ? "Multiple choice" : "True / False")}</span></div>
-      ${!review && !state.assessmentMode ? `<button class="exam-mark-review${marked ? " is-marked" : ""}" type="button" data-mark-review aria-pressed="${marked}" aria-label="${marked ? "Remove review mark" : "Mark question for review"}" title="${marked ? "Remove review mark" : "Mark question for review"}">${marked ? "Marked" : "Mark"}</button>` : ""}</div>
-      <div class="stem">${escapeHtml(question.stem)}</div>`;
+      ${!review && !state.assessmentMode ? `<button class="exam-mark-review${marked ? " is-marked" : ""}" type="button" data-mark-review aria-pressed="${marked}" aria-label="${marked ? "Remove review mark" : "Mark question for review"}" title="${marked ? "Remove review mark" : "Mark question for review"}">${marked ? "Marked" : "Mark"}</button>` : ""}</div>`;
+    let html = `<div class="stem">${escapeHtml(question.stem)}</div>`;
+    // The figure stays in view (left column on wide screens, top on phones) while answers scroll, as in practice.
+    let figure = "";
     if (question.image_url) {
       const style = question.image_width > 0 && question.image_height > 0
-        ? ` style="--image-aspect-ratio:${question.image_width}/${question.image_height};--image-max-width:${78 * question.image_width / question.image_height}vh"` : "";
+        ? ` style="--image-aspect-ratio:${question.image_width}/${question.image_height};--image-w-per-h:${question.image_width / question.image_height};--image-max-width:${78 * question.image_width / question.image_height}vh"` : "";
       const markers = (question.targets || []).filter(target =>
         target.x_percent !== null && target.y_percent !== null
       ).map(target => `<span class="image-marker" style="left:${target.x_percent}%;top:${target.y_percent}%">${escapeHtml(target.label)}</span>`).join("");
-      html += `<figure class="quiz-image-figure"><div class="image-stage${style ? " is-calibrated" : ""}"${style}><img src="${escapeHtml(question.image_url)}" alt="Question image"><div class="image-markers" aria-hidden="true">${markers}</div></div><figcaption><a href="${escapeHtml(question.image_url)}" target="_blank" rel="noopener">Open original image</a></figcaption></figure>`;
+      figure = `<figure class="quiz-image-figure"><div class="image-stage${style ? " is-calibrated" : ""}"${style}><img src="${escapeHtml(question.image_url)}" alt="Question image"><div class="image-markers" aria-hidden="true">${markers}</div></div><figcaption><a href="${escapeHtml(question.image_url)}" target="_blank" rel="noopener">Open original image</a></figcaption></figure>`;
     }
 
     if (question.kind === "mcq") {
@@ -198,8 +200,9 @@
 
     if (review && question.explanation) html += `<div class="fb ok exam-feedback"><strong>Explanation</strong><p>${escapeHtml(question.explanation)}</p></div>`;
     if (review && question.note) html += `<div class="fb warning exam-feedback exam-note"><strong>Note</strong><p>${escapeHtml(question.note)}</p></div>`;
+    html = head + (figure ? `<div class="image-question-layout">${figure}<div class="image-question-side">${html}</div></div>` : html);
     if (review) html += noteMarkup(question);
-    questionElement.className = `card quiz-question exam-question${question.kind === "desc" ? " flashcard descriptive-question" : ""}${question.kind === "mcq" ? " quiz-question-mcq" : question.kind === "tf" ? " quiz-question-tf" : ""}`;
+    questionElement.className = `card quiz-question exam-question${question.kind === "desc" ? " flashcard descriptive-question" : ""}${question.kind === "mcq" ? " quiz-question-mcq" : question.kind === "tf" ? " quiz-question-tf" : ""}${figure ? " quiz-question-has-image" : ""}`;
     questionElement.innerHTML = html;
     position.textContent = state.assessmentMode
       ? `${state.questions.length} question${state.questions.length === 1 ? "" : "s"} still need assessment`

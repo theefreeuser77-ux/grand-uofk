@@ -182,9 +182,13 @@
 
   async function toggleSave(id) {
     if (!AUTH) { notice[id] = "login"; render(); return; }
+    if (byId[id].saved && byId[id].my_note && !confirm("This question has a note. Removing it from Saved also deletes the note. Continue?")) return;
     const r = await post(url(D.save, id), {});
     if (r.status === 401) notice[id] = "login";
-    else if (r.json && typeof r.json.saved === "boolean") byId[id].saved = r.json.saved;
+    else if (r.json && typeof r.json.saved === "boolean") {
+      byId[id].saved = r.json.saved;
+      if (!r.json.saved) { byId[id].my_note = ""; delete nt[id]; }
+    }
     render();
   }
 
@@ -374,7 +378,7 @@
     const text = n.text ?? q.my_note ?? "";
     return `${btn}<div class="cmtbox question-note">
       <textarea class="question-note-text" rows="4" maxlength="5000" placeholder="Something to remember next time you meet this question…">${esc(text)}</textarea>
-      <div class="row" style="margin-top:6px"><span class="mute">Only you see this. Notes are added to your Saved questions.</span>
+      <div class="row" style="margin-top:6px"><span class="mute">Only you see this. Questions with notes are kept in your Saved questions.</span>
         <span>${q.my_note ? `<button class="btn" data-act="note-delete" ${n.busy ? "disabled" : ""}>Delete</button> ` : ""}<button class="btn pri" data-act="note-save" ${n.busy ? "disabled" : ""}>${n.busy ? "Saving…" : "Save note"}</button></span></div>
       ${n.err ? `<div class="fb bad">${esc(n.err)}</div>` : ""}${n.msg ? `<div class="fb ok">${esc(n.msg)}</div>` : ""}</div>`;
   }

@@ -13,7 +13,7 @@
   <div class="stem">{{ q.stem }}</div>
   <ul class="w">{% for o in q.options.all %}<li><b>{{ forloop.counter0|add:65|stringformat:"c" }}.</b> <span>{{ o.text }}</span></li>{% endfor %}</ul>
   {% if q.my_note %}<details class="question-note-saved"><summary>📝 Show note</summary><p>{{ q.my_note|linebreaksbr }}</p></details>{% endif %}
-  <form method="post" action="{% url 'bank:saved_remove' q.pk %}">{% csrf_token %}
+  <form method="post" action="{% url 'bank:saved_remove' q.pk %}"{% if q.my_note %} onsubmit="return confirm('This question has a note. Removing it from Saved also deletes the note. Continue?')"{% endif %}>{% csrf_token %}
     <input type="hidden" name="next" value="{{ request.get_full_path }}">
     <button class="btn">Remove from saved</button></form>
 </div>

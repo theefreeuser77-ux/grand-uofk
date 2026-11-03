@@ -1833,6 +1833,13 @@ class SavedTests(Base):
         self.assertEqual(self.post_json(url, {"text": ""}).json(), {"note": "", "saved": True})
         self.assertFalse(QuestionNote.objects.exists())
 
+        self.post_json(url, {"text": "Back again"})
+        self.assertFalse(self.post_json(reverse("bank:api_save", args=[noted.pk]), {}).json()["saved"])
+        self.assertFalse(QuestionNote.objects.exists())          # un-saving drops the note too
+        self.post_json(url, {"text": "Once more"})
+        self.client.post(reverse("bank:saved_remove", args=[noted.pk]))
+        self.assertFalse(QuestionNote.objects.exists())
+
     def test_save_toggle_and_saved_section(self):
         deck = self.import_sample()
         q = deck.questions.first()
@@ -1867,7 +1874,7 @@ class SavedTests(Base):
 
         page = self.client.get(reverse("bank:saved_quiz", args=[deck.slug]))
         self.assertContains(page, 'data-question-type="saved"')
-        self.assertContains(page, "?v=20261103-2")
+        self.assertContains(page, "?v=20261103-3")
 
         practice = self.client.get(reverse("bank:api_saved_questions", args=[deck.slug])).json()["questions"]
         self.assertEqual([item["id"] for item in practice], [question.pk])
