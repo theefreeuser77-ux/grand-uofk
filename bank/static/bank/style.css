@@ -17,7 +17,7 @@ button,.btn{font:inherit;color:inherit;cursor:pointer;border:1px solid var(--lin
 button:hover:not(:disabled),.btn:hover{border-color:var(--acc);transform:translateY(-1px);box-shadow:0 8px 18px rgba(26,22,18,.06)}
 .btn.pri{background:var(--acc);border-color:var(--acc);color:#fff}
 button:disabled{opacity:.4;cursor:default}
-input[type=text],select,textarea{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+input[type=text],input[type=password],input[type=email],input[type=number],select,textarea{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
 textarea{width:100%;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.88rem}
 .grid{display:grid;gap:12px}
 .set,.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;color:inherit;text-decoration:none;display:block;box-shadow:none}
@@ -3594,3 +3594,31 @@ button,.btn{border-radius:5px}
 .book-cover-small{flex:none;width:88px;padding:10px 8px 8px 16px;gap:0;justify-content:center;pointer-events:none;box-shadow:0 6px 12px rgb(0 0 0 / 25%)}
 .book-cover-small::before{inset:5px 5px 5px 13px}
 .book-cover-small .book-cover-title{font-size:.58rem;line-height:1.1;-webkit-line-clamp:5}
+
+/* ---- Login / sign-up: Arabic name under the logo and show-password eye ---- */
+.auth-header{flex-direction:column;align-items:center}
+.auth-brand-name{
+  display:flex;align-items:center;justify-content:center;gap:14px;
+  margin:8px 0 0;
+  font-family:"Noto Naskh Arabic","Amiri","Traditional Arabic","Arabic Typesetting","Geeza Pro","Times New Roman",serif;
+  font-size:clamp(1.55rem,5.4vw,1.95rem);font-weight:700;line-height:1.35;
+  color:var(--brand-brown);
+}
+.auth-brand-name::before,.auth-brand-name::after{
+  content:"";flex:none;width:clamp(30px,9vw,58px);height:2px;border-radius:2px;
+}
+/* In RTL, ::before sits on the right and ::after on the left; each line fades away from the text. */
+.auth-brand-name::before{background:linear-gradient(to left,transparent,var(--brand-gold))}
+.auth-brand-name::after{background:linear-gradient(to right,transparent,var(--brand-gold))}
+.password-wrap{position:relative}
+.password-wrap input{padding-right:44px}
+.password-toggle{
+  position:absolute;top:50%;right:5px;transform:translateY(-50%);
+  display:flex;align-items:center;justify-content:center;
+  width:34px;height:34px;padding:0;border:0;border-radius:8px;
+  background:transparent;color:var(--mute);box-shadow:none;
+}
+.password-wrap .password-toggle:hover:not(:disabled),.password-wrap .password-toggle[aria-pressed="true"]{
+  transform:translateY(-50%);border:0;background:transparent;box-shadow:none;color:var(--brand-gold);
+}
+.password-toggle:focus-visible{outline:2px solid var(--brand-gold);outline-offset:1px}

@@ -2862,6 +2862,14 @@ class ResumeActivityTests(Base):
         self.assertContains(home, "bank/resume_activity")
 
 
+class LoginPageTests(Base):
+    def test_login_page_shows_the_arabic_name_and_a_password_eye(self):
+        login = self.client.get(reverse("bank:login"))
+        self.assertContains(login, '<p class="auth-brand-name" lang="ar" dir="rtl">طب الخرطوم</p>', html=True)
+        self.assertContains(login, "password-toggle")
+        self.assertContains(login, 'name="password"')
+
+
 class LibraryTests(Base):
     def make_book(self):
         self.client.force_login(self.editor)

@@ -3,11 +3,7 @@
 {% block title %}Log in{% endblock %}
 {% block body_class %}auth-page{% endblock %}
 {% block wrap_class %}auth-page-wrap{% endblock %}
-{% block header %}
-  <header class="auth-header">
-    <h1 class="auth-brand"><a href="{% url 'bank:home' %}"><img class="brand-logo brand-logo-light" src="{% static 'bank/rawasi-logo.png' %}" alt="Rawasi — Batch 101"><img class="brand-logo brand-logo-dark" src="{% static 'bank/rawasi-logo-dark.png' %}" alt="" aria-hidden="true"></a></h1>
-  </header>
-{% endblock %}
+{% block header %}{% include "bank/_auth_header.html" %}{% endblock %}
 {% block content %}
 <form method="post" class="card narrow login-form">
   <h2 class="login-title">Log in</h2>
@@ -18,3 +14,4 @@
   <div class="login-actions"><button class="btn pri">Log in</button></div>
 </form>
 {% endblock %}
+{% block scripts %}{% include "bank/_password_toggle.html" %}{% endblock %}
