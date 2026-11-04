@@ -348,6 +348,8 @@ class UserSettingsTests(Base):
         self.assertContains(response, "Response language")
         for site in ("chatgpt", "claude", "gemini", "deepseek", "grok", "copilot", "perplexity"):
             self.assertContains(response, f'name="ai-site" value="{site}"')
+        self.assertContains(response, 'name="ai-depth" value="regular"')
+        self.assertContains(response, 'name="ai-depth" value="deep"')
         self.assertContains(response, 'value="en"')
         self.assertContains(response, 'value="ar"')
         self.assertContains(response, f'data-user="{self.student.pk}"')
@@ -1876,7 +1878,7 @@ class SavedTests(Base):
 
         page = self.client.get(reverse("bank:saved_quiz", args=[deck.slug]))
         self.assertContains(page, 'data-question-type="saved"')
-        self.assertContains(page, "?v=20261104-1")
+        self.assertContains(page, "?v=20261104-2")
 
         practice = self.client.get(reverse("bank:api_saved_questions", args=[deck.slug])).json()["questions"]
         self.assertEqual([item["id"] for item in practice], [question.pk])

@@ -295,15 +295,16 @@
       return {
         language: saved.aiLanguage === "ar" ? "ar" : "en",
         site: AI_SITES[saved.aiSite] ? saved.aiSite : "chatgpt",
+        depth: saved.aiDepth === "deep" ? "deep" : "regular",
       };
     } catch (error) {
       console.warn("Could not read the AI preferences; using ChatGPT in English.", error);
-      return {language: "en", site: "chatgpt"};
+      return {language: "en", site: "chatgpt", depth: "regular"};
     }
   }
 
   function chatGptLink(q, a, targets) {
-    const {language: responseLanguage, site} = aiSettings();
+    const {language: responseLanguage, site, depth} = aiSettings();
     const ai = AI_SITES[site];
     const lines = [
       "I am studying medicine with a self-study quiz. Help me understand the underlying topic, not just memorize the answer.",
@@ -313,6 +314,9 @@
         ? "Write your entire response in Arabic. Keep medical terms in English in parentheses where useful."
         : "Write your entire response in English.",
       "Start your reply by writing out the question in full (with its options, statements or labels) exactly as given below, then give your explanation.",
+      depth === "deep"
+        ? "Give a deep explanation. First say which answer is correct and why, and why each other answer is wrong. Then dive deeper into the topic: the underlying mechanism, anatomy or physiology, related concepts, clinical relevance, and the high-yield points and common exam traps around it."
+        : "Keep the explanation focused: say which answer is correct and why, and briefly why each other answer is wrong.",
     ];
     if (targets) {
       lines.push(
