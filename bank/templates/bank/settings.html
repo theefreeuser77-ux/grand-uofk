@@ -11,9 +11,20 @@
   </button>
 </section>
 <section class="card settings-card">
-  <h3>ChatGPT response language</h3>
-  <p class="mute">Choose the language ChatGPT should use when explaining a quiz question. This preference is saved in this browser.</p>
+  <h3>اتونس 😁 button</h3>
+  <p class="mute">Choose which AI the button opens and the language it should explain in. These preferences are saved in this browser.</p>
   <form id="settings-form" data-user="{{ request.user.pk }}">
+    <fieldset class="settings-language-options">
+      <legend>AI</legend>
+      <label><input type="radio" name="ai-site" value="chatgpt"> ChatGPT</label>
+      <label><input type="radio" name="ai-site" value="claude"> Claude</label>
+      <label><input type="radio" name="ai-site" value="gemini"> Gemini</label>
+      <label><input type="radio" name="ai-site" value="deepseek"> DeepSeek</label>
+      <label><input type="radio" name="ai-site" value="grok"> Grok</label>
+      <label><input type="radio" name="ai-site" value="copilot"> Copilot</label>
+      <label><input type="radio" name="ai-site" value="perplexity"> Perplexity</label>
+    </fieldset>
+    <p class="mute">ChatGPT opens with the question already typed. The others open empty: the question is copied, so paste it in (Ctrl+V or long-press → Paste). If the question has an image, a “Copy image” button appears to paste it next.</p>
     <fieldset class="settings-language-options">
       <legend>Response language</legend>
       <label><input type="radio" name="ai-language" value="en"> English</label>
@@ -32,24 +43,28 @@
   const key = `gd:settings:${form.dataset.user}`;
   const status = document.getElementById("settings-status");
   const controls = [...form.querySelectorAll('input[name="ai-language"]')];
+  const sites = [...form.querySelectorAll('input[name="ai-site"]')];
   try {
     const saved = JSON.parse(localStorage.getItem(key) || "{}");
     const language = saved.aiLanguage === "ar" ? "ar" : "en";
     controls.find(control => control.value === language).checked = true;
+    (sites.find(control => control.value === saved.aiSite) || sites[0]).checked = true;
   } catch (error) {
     controls.find(control => control.value === "en").checked = true;
-    status.textContent = "Could not read the saved preference; English is selected.";
+    sites[0].checked = true;
+    status.textContent = "Could not read the saved preferences; ChatGPT and English are selected.";
   }
   form.addEventListener("submit", event => {
     event.preventDefault();
     const selected = form.querySelector('input[name="ai-language"]:checked');
-    if (!selected) {
-      status.textContent = "Choose a response language.";
+    const site = form.querySelector('input[name="ai-site"]:checked');
+    if (!selected || !site) {
+      status.textContent = "Choose an AI and a response language.";
       return;
     }
     try {
       const saved = JSON.parse(localStorage.getItem(key) || "{}");
-      localStorage.setItem(key, JSON.stringify({...saved, aiLanguage: selected.value}));
+      localStorage.setItem(key, JSON.stringify({...saved, aiLanguage: selected.value, aiSite: site.value}));
       status.textContent = "Settings saved.";
     } catch (error) {
       status.textContent = "Could not save settings. Check your browser storage permissions.";

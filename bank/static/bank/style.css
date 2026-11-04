@@ -771,7 +771,7 @@ form.inline{display:inline}
 .deck-choices button span{font-size:.82rem;opacity:.8}
 .flash-answer{margin:12px 0;padding:14px 16px;background:var(--bg);border:1px solid var(--line);border-left:4px solid var(--acc);border-radius:8px;white-space:pre-wrap}
 .flash-answer b{display:block;margin-bottom:5px;color:var(--acc)}
-.ai-question-actions{display:flex;justify-content:center;margin:14px auto 2px}
+.ai-question-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin:14px auto 2px}
 .ai-question-actions .btn{
   display:inline-flex;
   align-items:center;

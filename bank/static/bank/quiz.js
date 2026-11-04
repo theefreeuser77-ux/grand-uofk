@@ -278,14 +278,33 @@
     window.scrollTo({top: Math.max(0, scrollTop), behavior: "smooth"});
   }
 
-  function chatGptLink(q, a, targets) {
-    let responseLanguage = "en";
+  // Only ChatGPT takes the prompt in its link; for the others the prompt is copied to paste in.
+  const AI_SITES = {
+    chatgpt: {name: "ChatGPT", url: "https://chatgpt.com/"},
+    claude: {name: "Claude", url: "https://claude.ai/new"},
+    gemini: {name: "Gemini", url: "https://gemini.google.com/app"},
+    deepseek: {name: "DeepSeek", url: "https://chat.deepseek.com/"},
+    grok: {name: "Grok", url: "https://grok.com/"},
+    copilot: {name: "Copilot", url: "https://copilot.microsoft.com/"},
+    perplexity: {name: "Perplexity", url: "https://www.perplexity.ai/"},
+  };
+
+  function aiSettings() {
     try {
-      responseLanguage = JSON.parse(localStorage.getItem(AI_SETTINGS_KEY) || "{}").aiLanguage === "ar"
-        ? "ar" : "en";
+      const saved = JSON.parse(localStorage.getItem(AI_SETTINGS_KEY) || "{}");
+      return {
+        language: saved.aiLanguage === "ar" ? "ar" : "en",
+        site: AI_SITES[saved.aiSite] ? saved.aiSite : "chatgpt",
+      };
     } catch (error) {
-      console.warn("Could not read the ChatGPT response-language preference; using English.", error);
+      console.warn("Could not read the AI preferences; using ChatGPT in English.", error);
+      return {language: "en", site: "chatgpt"};
     }
+  }
+
+  function chatGptLink(q, a, targets) {
+    const {language: responseLanguage, site} = aiSettings();
+    const ai = AI_SITES[site];
     const lines = [
       "I am studying medicine with a self-study quiz. Help me understand the underlying topic, not just memorize the answer.",
       "Do not mention, identify, or promote the website or quiz platform this question came from.",
@@ -293,6 +312,7 @@
       responseLanguage === "ar"
         ? "Write your entire response in Arabic. Keep medical terms in English in parentheses where useful."
         : "Write your entire response in English.",
+      "Start your reply by writing out the question in full (with its options, statements or labels) exactly as given below, then give your explanation.",
     ];
     if (targets) {
       lines.push(
@@ -344,13 +364,19 @@
       lines.push(`The question's image is being pasted into this chat (also at ${new URL(q.image_url, location.href).href}). Use it for visual details; if no image has arrived, ask me to paste it instead of guessing.`);
     }
     lines.push("This is for learning only, not for personal diagnosis or treatment.");
-    const chatUrl = new URL("https://chatgpt.com/");
-    chatUrl.searchParams.set("q", lines.join("\n\n"));
-    if (!q.image_url) {
-      return `<a class="btn" href="${esc(chatUrl.href)}" target="_blank" rel="noopener noreferrer">اتونس 😁 ↗</a>`;
+    const prompt = lines.join("\n\n");
+    const image = q.image_url ? ` data-copy-image="${esc(q.image_url)}"` : "";
+    if (site === "chatgpt") {
+      const chatUrl = new URL(ai.url);
+      chatUrl.searchParams.set("q", prompt);
+      if (!q.image_url) {
+        return `<a class="btn" href="${esc(chatUrl.href)}" target="_blank" rel="noopener noreferrer">اتونس 😁 ↗</a>`;
+      }
+      return `<a class="btn" href="${esc(chatUrl.href)}" target="_blank" rel="noopener noreferrer" data-ai-link${image}>اتونس 😁 ↗</a>
+        <p class="mute image-chatgpt-hint" data-copy-status>The image is copied when you open ChatGPT: paste it there with Ctrl+V (or long-press → Paste).</p>`;
     }
-    return `<a class="btn" href="${esc(chatUrl.href)}" target="_blank" rel="noopener noreferrer" data-copy-image="${esc(q.image_url)}">اتونس 😁 ↗</a>
-      <p class="mute image-chatgpt-hint" data-copy-status>The image is copied when you open ChatGPT: paste it there with Ctrl+V (or long-press → Paste).</p>`;
+    return `<a class="btn" href="${esc(ai.url)}" target="_blank" rel="noopener noreferrer" data-ai-link data-ai-name="${esc(ai.name)}" data-copy-prompt="${esc(prompt)}"${image}>اتونس 😁 ↗</a>
+      <p class="mute image-chatgpt-hint" data-copy-status>The question is copied when you open ${esc(ai.name)}: paste it there with Ctrl+V (or long-press → Paste).${q.image_url ? " Then come back here for the image." : ""}</p>`;
   }
 
   function feedback(q, a) {
@@ -981,27 +1007,77 @@
     }));
   }
 
+  async function copyImage(src) {
+    if (!navigator.clipboard?.write || !window.ClipboardItem) return false;
+    try {
+      // Passing the promise keeps the click's user activation, which Safari requires.
+      await navigator.clipboard.write([new ClipboardItem({"image/png": imageAsPng(src)})]);
+      return true;
+    } catch (error) {
+      console.warn("Could not copy the question image.", error);
+      return false;
+    }
+  }
+
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (error) {
+      // Older browsers: copy through a hidden text box instead.
+      const box = document.createElement("textarea");
+      box.value = text;
+      box.setAttribute("readonly", "");
+      box.style.cssText = "position:fixed;opacity:0;top:0;left:0";
+      document.body.appendChild(box);
+      box.select();
+      let copied = false;
+      try { copied = document.execCommand("copy"); } catch (fallbackError) {
+        console.warn("Could not copy the question prompt.", error, fallbackError);
+      }
+      box.remove();
+      return copied;
+    }
+  }
+
+  // A second tap copies the image once the question text has been pasted.
   root.addEventListener("click", async e => {
-    const link = e.target.closest("a[data-copy-image]");
+    const button = e.target.closest("[data-copy-image-again]");
+    if (!button) return;
+    e.preventDefault();
+    const status = button.parentElement.querySelector("[data-copy-status]");
+    const copied = await copyImage(button.dataset.copyImageAgain);
+    if (status) {
+      status.textContent = copied
+        ? `Image copied. Paste it into ${button.dataset.aiName} too.`
+        : `Couldn't copy the image here. In ${button.dataset.aiName}, attach it from “Open original image”.`;
+    }
+  });
+
+  root.addEventListener("click", async e => {
+    const link = e.target.closest("a[data-ai-link]");
     if (!link) return;
     e.preventDefault();
     const status = link.parentElement.querySelector("[data-copy-status]");
-    let copied = false;
-    if (navigator.clipboard?.write && window.ClipboardItem) {
-      try {
-        // Passing the promise keeps the click's user activation, which Safari requires.
-        await navigator.clipboard.write([new ClipboardItem({"image/png": imageAsPng(link.dataset.copyImage)})]);
-        copied = true;
-      } catch (error) {
-        console.warn("Could not copy the question image for ChatGPT.", error);
-      }
-    }
+    const name = link.dataset.aiName || "ChatGPT";
+    const prompt = link.dataset.copyPrompt;
+    const copied = prompt ? await copyText(prompt) : await copyImage(link.dataset.copyImage);
     const opened = window.open(link.href, "_blank");
     if (opened) opened.opener = null;
     if (status) {
-      status.textContent = copied
-        ? "Image copied. Paste it into ChatGPT with Ctrl+V (or long-press → Paste)."
-        : "Couldn't copy the image here. In ChatGPT, attach it from “Open original image”.";
+      if (prompt) {
+        status.textContent = copied
+          ? `Question copied. Paste it into ${name} with Ctrl+V (or long-press → Paste).`
+          : `Couldn't copy the question here; your browser blocked it.`;
+        if (link.dataset.copyImage && !link.parentElement.querySelector("[data-copy-image-again]")) {
+          status.insertAdjacentHTML("beforebegin", `<button class="btn" type="button" data-copy-image-again="${esc(link.dataset.copyImage)}" data-ai-name="${esc(name)}">📋 Copy image</button>`);
+          status.textContent += " Then tap “Copy image” and paste again.";
+        }
+      } else {
+        status.textContent = copied
+          ? "Image copied. Paste it into ChatGPT with Ctrl+V (or long-press → Paste)."
+          : "Couldn't copy the image here. In ChatGPT, attach it from “Open original image”.";
+      }
       if (!opened) status.textContent += " Your browser blocked the new tab; tap the button again.";
     }
   });
