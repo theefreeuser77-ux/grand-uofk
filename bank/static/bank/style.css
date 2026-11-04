@@ -772,33 +772,40 @@ form.inline{display:inline}
 .flash-answer{margin:12px 0;padding:14px 16px;background:var(--bg);border:1px solid var(--line);border-left:4px solid var(--acc);border-radius:8px;white-space:pre-wrap}
 .flash-answer b{display:block;margin-bottom:5px;color:var(--acc)}
 .ai-question-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin:14px auto 2px}
+/* The AI button wears the brand: deep brown with a gold edge, like the logo.
+   Fixed colours, because dark mode turns --brand-brown amber for text. */
 .ai-question-actions .btn{
   display:inline-flex;
   align-items:center;
   justify-content:center;
   gap:8px;
-  min-width:190px;
-  padding:10px 24px;
-  border:1px solid #9a5c20;
-  border-radius:999px;
-  background:linear-gradient(135deg,#9a5c20,#c17b2f);
-  color:#fffaf0;
-  font-weight:750;
-  letter-spacing:.02em;
+  min-width:180px;
+  padding:10px 22px;
+  border:1px solid #e9ab11;
+  border-radius:11px;
+  background:#471d10;
+  color:#ffcc5e;
+  font-weight:700;
+  letter-spacing:.01em;
   text-align:center;
-  box-shadow:0 6px 16px rgba(90,55,18,.2);
+  box-shadow:inset 0 1px 0 rgba(255,204,94,.18),0 2px 8px rgba(45,34,20,.12);
 }
 .ai-question-actions .btn:hover{
-  border-color:#754214;
-  background:linear-gradient(135deg,#754214,#a96824);
-  box-shadow:0 9px 22px rgba(90,55,18,.27);
+  border-color:#ffcc5e;
+  background:#7e331c;
+  color:#fff7e0;
+  box-shadow:inset 0 1px 0 rgba(255,204,94,.22),0 9px 20px rgba(45,34,20,.18);
 }
-:root[data-theme="dark"] .ai-question-actions .btn{
-  border-color:#d6a453;
-  background:linear-gradient(135deg,#93652d,#b98742);
-  color:#fffaf0;
+/* "Copy image" is the follow-up step, so it stays a plain button beside it. */
+.ai-question-actions .btn[data-copy-image-again]{
+  min-width:0;
+  background:var(--card);
+  color:var(--ink);
+  border-color:var(--brand-gold);
+  box-shadow:0 2px 8px rgba(45,34,20,.06);
 }
-.ai-question-actions .btn:focus-visible{outline:3px solid var(--flash-answer);outline-offset:3px}
+.ai-question-actions .btn[data-copy-image-again]:hover{background:var(--card);color:var(--ink);border-color:var(--brand-amber)}
+.ai-question-actions .btn:focus-visible{outline:3px solid var(--brand-gold);outline-offset:3px}
 .answer-image-figure{display:flex;justify-content:center;max-width:100%;margin:12px 0 0}
 .answer-image-figure img{display:block;width:auto;height:auto;max-width:100%;max-height:min(65vh,640px);object-fit:contain;border:1px solid var(--line);border-radius:8px}
 .shuffle-toggle{display:inline-flex;align-items:center;gap:8px;color:var(--ink);font-weight:500}
