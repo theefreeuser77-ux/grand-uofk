@@ -4,6 +4,7 @@ import io
 import tempfile
 from datetime import timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth.models import Permission, User
@@ -15,10 +16,11 @@ from django.utils import timezone
 
 from .image_storage import delete_question_image, upload_question_image
 from .models import (
-    AIExamAssessment, AIRequestQuota, Comment, ExamAttempt, ExamTemplate, ExamTemplateChapter, ImageTarget, Option, Question, QuestionBank,
+    AIExamAssessment, AIRequestQuota, BackupSnapshot, Comment, ExamAttempt, ExamTemplate, ExamTemplateChapter, ImageTarget, Option, Question, QuestionBank,
     QuestionImage, QuestionNote, SavedQuestion, Subject, SubjectSection, Book, BookChapter,
 )
-from .subject_backup import validate_backup
+from . import full_backup
+from .subject_backup import encode_backup, validate_backup
 
 SAMPLE = """Q: Pick B
 A. one
@@ -68,7 +70,11 @@ class SubjectBackupTests(Base):
         super().setUp()
         self.admin = User.objects.create_superuser("backup-admin", "admin@example.com", "secret")
 
-    def test_backup_page_and_download_are_staff_only_and_include_answer_content(self):
+    def old_export(self):
+        """A file in the older questions-only format, which is only ever added, never replaced."""
+        return SimpleNamespace(content=encode_backup())
+
+    def test_old_format_export_includes_answer_content(self):
         deck = self.import_sample()
         descriptive = Question.objects.create(
             bank=deck, kind=Question.DESC, stem="Describe resting potential.",
@@ -90,21 +96,7 @@ class SubjectBackupTests(Base):
             bank=second_deck, kind=Question.DESC,
             stem="Name the body system.", answer="The skeletal system.",
         )
-        anonymous = self.client.get(reverse("bank:subject_backup"))
-        self.assertEqual(anonymous.status_code, 302)
-        self.client.force_login(self.student)
-        self.assertEqual(self.client.get(reverse("bank:subject_backup")).status_code, 302)
-
-        self.client.force_login(self.admin)
-        page = self.client.get(reverse("bank:subject_backup"))
-        self.assertContains(page, "Download backup")
-        self.assertContains(page, "never edits or deletes existing content")
-        self.assertContains(page, "Backup")
-        response = self.client.get(reverse("bank:export_subject_backup"))
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response["Content-Type"], "application/json; charset=utf-8")
-        self.assertIn("grand-dozen-subject-backup.json", response["Content-Disposition"])
-        payload = json.loads(response.content)
+        payload = json.loads(self.old_export().content)
         self.assertEqual(
             {subject["name"] for subject in payload["subjects"]},
             {"Physiology", "Anatomy"},
@@ -138,7 +130,7 @@ class SubjectBackupTests(Base):
     def test_restore_adds_deleted_content_and_skips_matching_records(self):
         deck = self.import_sample()
         self.client.force_login(self.admin)
-        backup = self.client.get(reverse("bank:export_subject_backup"))
+        backup = self.old_export()
         payload = json.loads(backup.content)
         original_questions = list(deck.questions.order_by("pk"))
         removed_question = original_questions[0]
@@ -169,7 +161,7 @@ class SubjectBackupTests(Base):
     def test_conflict_rejects_entire_import_without_overwriting_or_partial_restore(self):
         deck = self.import_sample()
         self.client.force_login(self.admin)
-        backup = self.client.get(reverse("bank:export_subject_backup"))
+        backup = self.old_export()
         questions = list(deck.questions.order_by("pk"))
         missing_question_id = questions[1].pk
         questions[1].delete()
@@ -195,20 +187,20 @@ class SubjectBackupTests(Base):
         response = self.client.post(
             reverse("bank:import_subject_backup"), {"backup": upload}, follow=True,
         )
-        self.assertContains(response, "not valid UTF-8 JSON")
+        self.assertContains(response, "not valid JSON")
         self.assertEqual(Subject.objects.count(), 1)
         self.assertEqual(QuestionBank.objects.count(), 0)
 
     def test_upload_size_limit_is_enforced(self):
         self.client.force_login(self.admin)
         upload = SimpleUploadedFile("backup.json", b"{}", content_type="application/json")
-        with patch("bank.views.MAX_BACKUP_BYTES", 1):
+        with patch("bank.full_backup.MAX_BACKUP_BYTES", 1):
             response = self.client.post(
                 reverse("bank:import_subject_backup"), {"backup": upload}, follow=True,
             )
-        self.assertContains(response, "exceeds the 100 MB limit")
+        self.assertContains(response, "larger than the 100 MB limit")
         self.assertEqual(Subject.objects.count(), 1)
-        with patch("bank.subject_backup.MAX_BACKUP_BYTES", 1):
+        with patch("bank.full_backup.MAX_BACKUP_BYTES", 1):
             response = self.client.get(reverse("bank:export_subject_backup"))
         self.assertEqual(response.status_code, 413)
 
@@ -235,7 +227,7 @@ class SubjectBackupTests(Base):
             x_percent=25, y_percent=60, order=0,
         )
         self.client.force_login(self.admin)
-        backup = self.client.get(reverse("bank:export_subject_backup"))
+        backup = self.old_export()
 
         payload = validate_backup(backup.content)
         exported_subject = next(item for item in payload["subjects"] if item["id"] == subject.pk)
@@ -260,7 +252,7 @@ class SubjectBackupTests(Base):
             reverse("bank:import_subject_backup"), {"backup": upload}, follow=True,
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Backup restored without replacing existing content")
+        self.assertContains(response, "older questions-only backup, so nothing was deleted")
         restored_subject = Subject.objects.get(pk=subject_id)
         restored_deck = QuestionBank.objects.get(pk=deck_id)
         restored_question = Question.objects.get(pk=question_id)
@@ -281,7 +273,7 @@ class SubjectBackupTests(Base):
         )
         Question.objects.create(bank=deck, kind=Question.IMAGE, image_asset=image, stem="Old image.")
         self.client.force_login(self.admin)
-        backup = json.loads(self.client.get(reverse("bank:export_subject_backup")).content)
+        backup = json.loads(self.old_export().content)
         backup["version"] = 1
         for subject in backup["subjects"]:
             subject.pop("sections", None)
@@ -302,6 +294,138 @@ class SubjectBackupTests(Base):
         )
         self.assertContains(response, "version 1 backup contains image questions")
         self.assertEqual(Question.objects.count(), 3)
+
+
+class FullBackupTests(Base):
+    def setUp(self):
+        super().setUp()
+        self.admin = User.objects.create_superuser("backup-admin", "admin@example.com", "secret")
+        self.deck = self.import_sample()
+        self.question = self.deck.questions.order_by("pk").first()
+        book = Book.objects.create(title="Gray’s Anatomy Review")
+        self.chapter = BookChapter.objects.create(book=book, number=1, title="Thorax")
+        self.question.book_chapter = self.chapter
+        self.question.save(update_fields=["book_chapter"])
+        SavedQuestion.objects.create(user=self.student, question=self.question)
+        QuestionNote.objects.create(user=self.student, question=self.question, text="my private note")
+        Comment.objects.create(user=self.student, question=self.question, text="typo in option B")
+        self.template = ExamTemplate.objects.create(user=self.student, bank=self.deck, name="Mock", question_count=2)
+        ExamAttempt.objects.create(user=self.student, bank=self.deck, title="Try 1", question_ids=[self.question.pk])
+
+    def download(self):
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse("bank:export_subject_backup"))
+        self.assertEqual(response.status_code, 200)
+        return response
+
+    def upload(self, content, confirm="REPLACE", name="backup.json.gz"):
+        return self.client.post(reverse("bank:import_subject_backup"), {
+            "backup": SimpleUploadedFile(name, content, content_type="application/gzip"), "confirm": confirm,
+        }, follow=True)
+
+    def test_download_holds_the_whole_site_but_no_notes_or_comments(self):
+        self.client.force_login(self.student)
+        self.assertEqual(self.client.get(reverse("bank:export_subject_backup")).status_code, 302)
+        response = self.download()
+        self.assertEqual(response["Content-Type"], "application/gzip")
+        self.assertIn("deca-shine-backup-", response["Content-Disposition"])
+        payload = full_backup.decode(response.content)
+        self.assertEqual(payload["format"], "deca-shine-full-backup")
+        counts = payload["counts"]
+        for label in ("auth.User", "bank.Question", "bank.Option", "bank.Book", "bank.BookChapter",
+                      "bank.SavedQuestion", "bank.ExamTemplate", "bank.ExamAttempt"):
+            self.assertGreater(counts[label], 0, label)
+        self.assertNotIn("bank.QuestionNote", counts)
+        self.assertNotIn("bank.Comment", counts)
+        text = json.dumps(payload)
+        self.assertNotIn("my private note", text)
+        self.assertNotIn("typo in option B", text)
+        editor = next(r for r in payload["records"] if r["model"] == "auth.user" and r["fields"]["username"] == "ed")
+        self.assertIn(["bank", "question", "add_question"], editor["fields"]["user_permissions"])
+
+    def test_import_saves_a_restore_point_then_replaces_everything(self):
+        backup = self.download().content
+        created = self.question.created_at
+        # Change the site after the backup.
+        Question.objects.create(bank=self.deck, stem="Added after the backup")
+        newcomer = User.objects.create_user("newcomer", password="pw")
+        self.student.delete()
+
+        response = self.upload(backup)
+        self.assertContains(response, "a copy of the previous database was saved as a restore point")
+        self.assertEqual(Question.objects.count(), 2)
+        self.assertFalse(Question.objects.filter(stem="Added after the backup").exists())
+        self.assertFalse(User.objects.filter(pk=newcomer.pk).exists())
+        student = User.objects.get(username="stu")
+        self.assertTrue(student.check_password("pw"))
+        self.assertTrue(student.saved_questions.exists())
+        self.assertEqual(Question.objects.get(pk=self.question.pk).created_at, created)
+        self.assertEqual(Question.objects.get(pk=self.question.pk).book_chapter_id, self.chapter.pk)
+        self.assertTrue(User.objects.get(username="ed").has_perm("bank.add_question"))
+        self.assertEqual(Comment.objects.count(), 0)  # not part of downloads
+        self.assertEqual(QuestionNote.objects.count(), 0)
+        # The admin is still signed in, and new rows get fresh IDs.
+        self.assertEqual(self.client.get(reverse("bank:subject_backup")).status_code, 200)
+        self.assertGreater(Question.objects.create(bank=self.deck, stem="new").pk, self.question.pk)
+
+        point = BackupSnapshot.objects.get()
+        self.assertIn("backup.json.gz", point.reason)
+        saved = full_backup.decode(bytes(point.data))
+        self.assertTrue(saved["includes_private"])
+        self.assertEqual(saved["counts"]["bank.Question"], 3)
+        self.assertEqual(saved["counts"]["bank.Comment"], 1)  # restore points keep comments
+        self.assertContains(self.client.get(reverse("bank:subject_backup")), "Restore this version")
+
+    def test_restore_point_brings_back_the_previous_version_including_notes(self):
+        backup = self.download().content
+        Question.objects.create(bank=self.deck, stem="Only in the newer version")
+        self.upload(backup)
+        self.assertFalse(Question.objects.filter(stem="Only in the newer version").exists())
+        point = BackupSnapshot.objects.get()
+
+        download = self.client.get(reverse("bank:download_restore_point", args=[point.pk]))
+        self.assertEqual(full_backup.decode(download.content)["counts"]["bank.Question"], 3)
+
+        refused = self.client.post(reverse("bank:restore_restore_point", args=[point.pk]), {"confirm": ""}, follow=True)
+        self.assertContains(refused, "Type REPLACE")
+        self.assertFalse(Question.objects.filter(stem="Only in the newer version").exists())
+
+        response = self.client.post(
+            reverse("bank:restore_restore_point", args=[point.pk]), {"confirm": "REPLACE"}, follow=True,
+        )
+        self.assertContains(response, "restore point")
+        self.assertTrue(Question.objects.filter(stem="Only in the newer version").exists())
+        self.assertEqual(QuestionNote.objects.get().text, "my private note")
+        self.assertEqual(Comment.objects.get().text, "typo in option B")
+        self.assertEqual(BackupSnapshot.objects.count(), 2)
+
+    def test_nothing_changes_without_confirmation_or_with_a_bad_file(self):
+        backup = self.download().content
+        Question.objects.create(bank=self.deck, stem="Keep me")
+        self.assertContains(self.upload(backup, confirm="yes"), "Type REPLACE")
+        self.assertTrue(Question.objects.filter(stem="Keep me").exists())
+        self.assertFalse(BackupSnapshot.objects.exists())
+
+        payload = full_backup.decode(backup)
+        payload["records"] = [r for r in payload["records"] if r["model"] != "auth.user"]
+        response = self.upload(full_backup.encode(payload))
+        self.assertContains(response, "no user accounts")
+        self.assertTrue(Question.objects.filter(stem="Keep me").exists())
+
+        payload = full_backup.decode(backup)
+        for record in payload["records"]:
+            if record["model"] == "auth.user":
+                record["fields"]["is_staff"] = False
+        self.assertContains(self.upload(full_backup.encode(payload)), "no active admin account")
+
+        self.assertContains(self.upload(b"\x1f\x8bbroken"), "damaged")
+        self.assertTrue(Question.objects.filter(stem="Keep me").exists())
+        self.assertFalse(BackupSnapshot.objects.exists())
+
+    def test_only_the_last_five_restore_points_are_kept(self):
+        for _ in range(7):
+            full_backup.save_snapshot("test")
+        self.assertEqual(BackupSnapshot.objects.count(), 5)
 
 
 class PwaTests(TestCase):

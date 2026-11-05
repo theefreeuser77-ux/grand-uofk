@@ -3622,3 +3622,15 @@ button,.btn{border-radius:5px}
   transform:translateY(-50%);border:0;background:transparent;box-shadow:none;color:var(--brand-gold);
 }
 .password-toggle:focus-visible{outline:2px solid var(--brand-gold);outline-offset:1px}
+
+/* ---- Backup page ---- */
+.backup-form{display:grid;gap:6px;max-width:520px}
+.backup-form label{font-weight:600}
+.backup-form input[type=text]{max-width:220px}
+.restore-points{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.restore-point{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+.restore-point-info{display:grid;gap:2px;min-width:0}
+.restore-point-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.restore-point-form{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.restore-point-form input[type=text]{width:130px}
+.visually-hidden{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}

@@ -8,7 +8,7 @@ from datetime import timedelta
 from django import forms
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth import logout
+from django.contrib.auth import get_user_model, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import LoginView, redirect_to_login
 from django.contrib.admin.views.decorators import staff_member_required
@@ -34,11 +34,12 @@ from .image_storage import (
     ImageStorageError, delete_question_image, image_uploads_enabled, upload_question_image,
 )
 from .models import (
-    AIExamAssessment, Book, BookChapter, Comment, ImageTarget, Option, Question, QuestionBank, QuestionImage,
+    AIExamAssessment, BackupSnapshot, Book, BookChapter, Comment, ImageTarget, Option, Question, QuestionBank, QuestionImage,
     ExamAttempt, ExamTemplate, ExamTemplateChapter, QuestionNote, SavedQuestion, Subject, SubjectSection,
     SEMESTER_CHOICES,
 )
-from .subject_backup import BackupError, MAX_BACKUP_BYTES, encode_backup, restore_backup
+from . import full_backup
+from .subject_backup import BackupError, restore_backup
 
 
 # ---------------------------------------------------------------- helpers
@@ -1432,22 +1433,69 @@ def export_bank(request, slug):
     return resp
 
 
+REPLACE_CONFIRMATION = "REPLACE"
+
+
 @staff_member_required
 def subject_backup(request):
     return render(request, "bank/subject_backup.html", {
-        "max_backup_mb": MAX_BACKUP_BYTES // (1024 * 1024),
+        "max_backup_mb": full_backup.MAX_BACKUP_BYTES // (1024 * 1024),
+        "restore_points": BackupSnapshot.objects.defer("data"),
+        "confirmation": REPLACE_CONFIRMATION,
+        "keep": full_backup.KEEP_SNAPSHOTS,
     })
+
+
+def _backup_download(data, name):
+    response = HttpResponse(data, content_type="application/gzip")
+    response["Content-Disposition"] = f'attachment; filename="{name}"'
+    return response
 
 
 @staff_member_required
 def export_subject_backup(request):
     try:
-        raw = encode_backup()
-    except BackupError as error:
+        data = full_backup.encode(full_backup.build_payload(include_private=False))
+    except full_backup.BackupError as error:
         return HttpResponse(str(error), status=413, content_type="text/plain; charset=utf-8")
-    response = HttpResponse(raw, content_type="application/json; charset=utf-8")
-    response["Content-Disposition"] = 'attachment; filename="grand-dozen-subject-backup.json"'
-    return response
+    return _backup_download(data, f"deca-shine-backup-{timezone.localtime():%Y-%m-%d-%H%M}.json.gz")
+
+
+def _count_label(count, noun):
+    return f"{count:,} {noun}{'' if count == 1 else 's'}"
+
+
+def _replace_and_report(request, payload, reason):
+    """Replace the database, keep the admin signed in if their account exists in the backup."""
+    username = request.user.get_username()
+    try:
+        snapshot, counts = full_backup.replace_database(payload, reason)
+    except full_backup.BackupError as error:
+        messages.error(request, str(error))
+        return redirect("bank:subject_backup")
+    user = get_user_model().objects.filter(username=username, is_active=True, is_staff=True).first()
+    # Every session row was wiped with the old database, so this request needs a fresh one.
+    request.session.cycle_key()
+    if user:
+        login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+    else:
+        logout(request)
+    messages.success(
+        request,
+        "The site now holds the backup: " + ", ".join((
+            _count_label(counts.get("bank.Question", 0), "question"),
+            _count_label(counts.get("bank.QuestionBank", 0), "chapter"),
+            _count_label(counts.get("bank.Book", 0), "library book"),
+            _count_label(counts.get("auth.User", 0), "account"),
+        )) + f". Before replacing anything, a copy of the previous database was saved as a restore point "
+        f"({timezone.localtime(snapshot.created_at):%d %b %Y, %H:%M}). You can download it or restore it "
+        "from the Backup page.",
+    )
+    if not user:
+        messages.warning(request, "Your account is not in the backup, so you have been signed out. "
+                                  "Sign in with an admin account from the backup.")
+        return redirect("bank:login")
+    return redirect("bank:subject_backup")
 
 
 @staff_member_required
@@ -1457,35 +1505,68 @@ def import_subject_backup(request):
     if backup_file is None:
         messages.error(request, "Choose a backup file to import.")
         return redirect("bank:subject_backup")
-    if backup_file.size > MAX_BACKUP_BYTES:
-        messages.error(request, "The backup file exceeds the 100 MB limit.")
+    if backup_file.size > full_backup.MAX_BACKUP_BYTES:
+        messages.error(request, "The backup file is larger than the 100 MB limit.")
         return redirect("bank:subject_backup")
+    raw = backup_file.read()
     try:
-        result = restore_backup(backup_file.read())
-    except BackupError as error:
+        payload = full_backup.decode(raw)
+    except full_backup.BackupError as error:
         messages.error(request, str(error))
         return redirect("bank:subject_backup")
 
-    added = result["added"]
-    skipped = result["skipped"]
-    def count_label(count, noun):
-        return f"{count} {noun}{'' if count == 1 else 's'}"
+    if full_backup.is_full_backup(payload):
+        if request.POST.get("confirm", "").strip() != REPLACE_CONFIRMATION:
+            messages.error(request, f"Type {REPLACE_CONFIRMATION} in the box to confirm replacing the whole site.")
+            return redirect("bank:subject_backup")
+        return _replace_and_report(request, payload, f"Before importing {backup_file.name}")
 
+    # An older questions-only backup: it has no accounts, so it is only ever added, never replaced.
+    try:
+        result = restore_backup(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+    except BackupError as error:
+        messages.error(request, str(error))
+        return redirect("bank:subject_backup")
+    added, skipped = result["added"], result["skipped"]
     messages.success(
         request,
-        "Backup restored without replacing existing content. "
+        "This was an older questions-only backup, so nothing was deleted: missing content was added. "
         "Added " + ", ".join((
-            count_label(added["subjects"], "subject"),
-            count_label(added["sections"], "section"),
-            count_label(added["decks"], "deck"),
-            count_label(added["questions"], "question"),
-            count_label(added["options"], "option"),
-            count_label(added["images"], "image asset"),
-            count_label(added["image_targets"], "image target"),
-        )) + "; "
-        f"skipped {sum(skipped.values())} matching existing records.",
+            _count_label(added["subjects"], "subject"),
+            _count_label(added["sections"], "section"),
+            _count_label(added["decks"], "deck"),
+            _count_label(added["questions"], "question"),
+            _count_label(added["options"], "option"),
+            _count_label(added["images"], "image asset"),
+            _count_label(added["image_targets"], "image target"),
+        )) + f"; skipped {sum(skipped.values()):,} matching existing records.",
     )
     return redirect("bank:subject_backup")
+
+
+@staff_member_required
+def download_restore_point(request, pk):
+    snapshot = get_object_or_404(BackupSnapshot, pk=pk)
+    return _backup_download(
+        bytes(snapshot.data),
+        f"deca-shine-restore-point-{timezone.localtime(snapshot.created_at):%Y-%m-%d-%H%M}.json.gz",
+    )
+
+
+@staff_member_required
+@require_POST
+def restore_restore_point(request, pk):
+    snapshot = get_object_or_404(BackupSnapshot, pk=pk)
+    if request.POST.get("confirm", "").strip() != REPLACE_CONFIRMATION:
+        messages.error(request, f"Type {REPLACE_CONFIRMATION} in the box to confirm restoring this version.")
+        return redirect("bank:subject_backup")
+    label = f"{timezone.localtime(snapshot.created_at):%d %b %Y, %H:%M}"
+    try:
+        payload = full_backup.decode(bytes(snapshot.data))
+    except full_backup.BackupError as error:
+        messages.error(request, str(error))
+        return redirect("bank:subject_backup")
+    return _replace_and_report(request, payload, f"Before restoring the restore point from {label}")
 
 
 # ---------------------------------------------------------------- JSON API

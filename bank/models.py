@@ -392,6 +392,32 @@ class AIExamAssessment(models.Model):
         ordering = ["created_at", "pk"]
 
 
+class BackupSnapshot(models.Model):
+    """A restore point: the whole database (gzip JSON) saved automatically before a backup replaced it.
+
+    These rows are never wiped by a restore and are not part of backups themselves.
+    """
+    created_at = models.DateTimeField(auto_now_add=True)
+    reason = models.CharField(max_length=200)
+    data = models.BinaryField()
+    size = models.PositiveIntegerField(default=0)
+    counts = models.JSONField(default=dict)
+
+    class Meta:
+        ordering = ["-created_at", "-pk"]
+
+    def __str__(self):
+        return f"Restore point {self.created_at:%Y-%m-%d %H:%M} ({self.reason})"
+
+    @property
+    def question_count(self):
+        return self.counts.get("bank.Question", 0)
+
+    @property
+    def user_count(self):
+        return self.counts.get("auth.User", 0)
+
+
 class Comment(models.Model):
     """Private message from a user to the admins about a question."""
     question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name="comments")

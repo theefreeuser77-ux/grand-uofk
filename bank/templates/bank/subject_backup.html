@@ -1,23 +1,53 @@
 {% extends "bank/base.html" %}
-{% block title %}Subject backup{% endblock %}
+{% block title %}Backup{% endblock %}
 {% block content %}
-<section class="card">
-  <h2 style="margin-top:0">Subject backup</h2>
-  <p>Export all subjects, sub-subjects, decks, and questions—including answers, options, and image-question metadata—as a readable JSON text file.</p>
-  <p class="fb warning">This file contains the full question bank and answer keys. Store it somewhere private. The maximum file size is {{ max_backup_mb }} MB.</p>
-  <p class="mute">Image files themselves remain in Supabase Storage; the backup preserves their storage references and question markers.</p>
-  <a class="btn pri" href="{% url 'bank:export_subject_backup' %}">Download backup</a>
+<section class="card backup-card">
+  <h2 style="margin-top:0">Full site backup</h2>
+  <p>Downloads everything on the site in one file: accounts (with their passwords, so people sign in as before), subjects, chapters, every question with its answers, options and image references, the Library, saved questions, exam templates and exam attempts. Students' private notes and comments are not included.</p>
+  <p class="fb warning">This file holds every account and every answer key. Keep it somewhere private. Image files stay in Supabase Storage; the backup keeps their links.</p>
+  <a class="btn pri" href="{% url 'bank:export_subject_backup' %}">Download full backup</a>
 </section>
 
-<section class="card" style="margin-top:12px">
-  <h3 style="margin-top:0">Restore a backup</h3>
-  <p>Import validates the complete file before saving. It only adds missing records; it never edits or deletes existing content. If an ID or unique name conflicts with different existing content, the entire import is rejected. Older backups containing image questions must be re-exported using the updated backup page.</p>
-  <form method="post" action="{% url 'bank:import_subject_backup' %}" enctype="multipart/form-data">
+<section class="card backup-card" style="margin-top:12px">
+  <h3 style="margin-top:0">Replace the site with a backup</h3>
+  <p>Importing a full backup <strong>deletes everything on the site</strong> and replaces it with the file's content. Before deleting anything, the site saves the current database as a restore point below, so you can go back.</p>
+  <p class="mute">You stay signed in if your account is in the backup. Everyone else is signed out and signs in again with their account from the backup. Older questions-only backups are only added; they never delete anything.</p>
+  <form method="post" action="{% url 'bank:import_subject_backup' %}" enctype="multipart/form-data" class="backup-form">
     {% csrf_token %}
-    <label>Backup JSON file<br>
-      <input type="file" name="backup" accept=".json,application/json" required>
-    </label>
-    <p><button class="btn pri" type="submit">Validate and restore</button></p>
+    <label for="backup-file">Backup file (.json.gz or .json, up to {{ max_backup_mb }} MB)</label>
+    <input id="backup-file" type="file" name="backup" accept=".gz,.json,application/gzip,application/json" required>
+    <label for="backup-confirm">To replace the whole site, type <strong>{{ confirmation }}</strong></label>
+    <input id="backup-confirm" type="text" name="confirm" autocomplete="off" placeholder="{{ confirmation }}">
+    <p><button class="btn pri" type="submit">Save a restore point and import</button></p>
   </form>
+</section>
+
+<section class="card backup-card" style="margin-top:12px">
+  <h3 style="margin-top:0">Restore points</h3>
+  <p class="mute">Made automatically before every import or restore. The last {{ keep }} are kept, and they include notes and comments. They live in this database: if the database itself is going away, download the one you need first.</p>
+  {% if restore_points %}
+  <ul class="restore-points">
+    {% for point in restore_points %}
+    <li class="restore-point">
+      <div class="restore-point-info">
+        <strong>{{ point.created_at|date:"d M Y, H:i" }}</strong>
+        <span>{{ point.reason }}</span>
+        <span class="mute">{{ point.question_count }} questions · {{ point.user_count }} accounts · {{ point.size|filesizeformat }}</span>
+      </div>
+      <div class="restore-point-actions">
+        <a class="btn" href="{% url 'bank:download_restore_point' point.pk %}">Download</a>
+        <form method="post" action="{% url 'bank:restore_restore_point' point.pk %}" class="restore-point-form">
+          {% csrf_token %}
+          <label class="visually-hidden" for="restore-confirm-{{ point.pk }}">Type {{ confirmation }} to restore this version</label>
+          <input id="restore-confirm-{{ point.pk }}" type="text" name="confirm" autocomplete="off" placeholder="Type {{ confirmation }}">
+          <button class="btn" type="submit">Restore this version</button>
+        </form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p>No restore points yet. One is saved automatically the first time you import a backup.</p>
+  {% endif %}
 </section>
 {% endblock %}
