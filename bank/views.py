@@ -206,7 +206,8 @@ def _home_counts():
             n_decks=Count("decks", distinct=True),
             n_q=Count(
                 "decks__questions",
-                filter=Q(decks__questions__is_in_sorting_bin=False, decks__questions__is_in_review_bin=False),
+                filter=Q(decks__questions__is_in_sorting_bin=False, decks__questions__is_in_review_bin=False,
+                         decks__questions__book_chapter__isnull=True),
                 distinct=True,
             ),
         ).values_list("pk", "n_decks", "n_q")
@@ -223,7 +224,8 @@ def home(request):
     for subject in subjects:
         subject.n_decks, subject.n_q = counts["subjects"].get(subject.pk, (0, 0))
     unfiled = QuestionBank.objects.filter(subject__isnull=True).annotate(
-        n=Count("questions", filter=Q(questions__is_in_sorting_bin=False, questions__is_in_review_bin=False))
+        n=Count("questions", filter=Q(questions__is_in_sorting_bin=False, questions__is_in_review_bin=False,
+                                      questions__book_chapter__isnull=True))
     )
     return render(request, "bank/home.html", {
         "subjects": subjects, "unfiled": unfiled,
@@ -238,13 +240,15 @@ def home(request):
 def subject_detail(request, slug):
     subject = get_object_or_404(Subject, slug=slug)
     decks = subject.decks.annotate(
-        n=Count("questions", filter=Q(questions__is_in_sorting_bin=False, questions__is_in_review_bin=False))
+        n=Count("questions", filter=Q(questions__is_in_sorting_bin=False, questions__is_in_review_bin=False,
+                                      questions__book_chapter__isnull=True))
     ).order_by("semester", "title")
     sections = subject.sections.annotate(
         n_decks=Count("decks", distinct=True),
         n_q=Count(
             "decks__questions",
-            filter=Q(decks__questions__is_in_sorting_bin=False, decks__questions__is_in_review_bin=False),
+            filter=Q(decks__questions__is_in_sorting_bin=False, decks__questions__is_in_review_bin=False,
+                         decks__questions__book_chapter__isnull=True),
             distinct=True,
         ),
     )
@@ -259,7 +263,8 @@ def section_detail(request, slug, section_slug):
     subject = get_object_or_404(Subject, slug=slug)
     section = get_object_or_404(SubjectSection, subject=subject, slug=section_slug)
     decks = section.decks.annotate(
-        n=Count("questions", filter=Q(questions__is_in_sorting_bin=False, questions__is_in_review_bin=False))
+        n=Count("questions", filter=Q(questions__is_in_sorting_bin=False, questions__is_in_review_bin=False,
+                                      questions__book_chapter__isnull=True))
     ).order_by("semester", "title")
     return render(request, "bank/section_detail.html", {
         "subject": subject, "section": section, "decks": decks,
@@ -269,7 +274,7 @@ def section_detail(request, slug, section_slug):
 @login_required
 def bank_detail(request, slug):
     bank = get_object_or_404(QuestionBank.objects.select_related("subject", "section"), slug=slug)
-    questions = bank.questions.filter(is_in_sorting_bin=False, is_in_review_bin=False)
+    questions = bank.questions.filter(is_in_sorting_bin=False, is_in_review_bin=False, book_chapter__isnull=True)
     uofk_filter = _uofk_label_filter()
     standard_questions = questions.filter(is_lab=False)
     counts = questions.aggregate(
@@ -345,7 +350,7 @@ EXAM_FORMATS = ("mcq", "tf", "descriptive", "identify")
 
 def _exam_questions(bank=None):
     questions = Question.objects.filter(
-        is_in_sorting_bin=False, is_in_review_bin=False,
+        is_in_sorting_bin=False, is_in_review_bin=False, book_chapter__isnull=True,
     )
     return questions.filter(bank=bank) if bank else questions
 
@@ -1455,7 +1460,8 @@ def export_bank(request, slug):
     text = parser.to_text(bank.title, services.bank_as_dicts(bank),
                           subject=bank.subject.name if bank.subject else None, semester=bank.semester,
                           section=bank.section.name if bank.section else None)
-    if bank.questions.filter(is_in_sorting_bin=False, is_in_review_bin=False, image_asset__isnull=False).exists():
+    if bank.questions.filter(is_in_sorting_bin=False, is_in_review_bin=False, book_chapter__isnull=True,
+                             image_asset__isnull=False).exists():
         text = "# NOTE: Attached image files are not included in this text export.\n\n" + text
     resp = HttpResponse(text, content_type="text/plain; charset=utf-8")
     resp["Content-Disposition"] = f'attachment; filename="{bank.slug}.txt"'
@@ -1606,7 +1612,7 @@ def api_questions(request, slug):
     review = request.GET.get("review") == "1"
     if review and not request.user.is_staff:
         return HttpResponseForbidden("Staff access is required.")
-    qs = bank.questions.filter(is_in_sorting_bin=False, is_in_review_bin=False)
+    qs = bank.questions.filter(is_in_sorting_bin=False, is_in_review_bin=False, book_chapter__isnull=True)
     qs = _filter_by_label(qs, _normalize_label_filter(request.GET.get("label", "all")))
     quiz_type = request.GET.get("type")
     if quiz_type == "descriptive":
@@ -2944,13 +2950,16 @@ def import_questions(request):
     deck = services.find_deck(subject, semester, title) if (subject and semester and title) else None
     if deck and section and deck.section_id not in (None, section.pk):
         section_error = "This deck already belongs to a different sub-subject."
-    if deck:
-        parser.mark_duplicates(result.questions, services.existing_keys(deck, is_lab=import_to_labs))
     book_chapter_id = request.POST.get("book_chapter", "").strip()
     book_chapter = (
         BookChapter.objects.select_related("book").filter(pk=book_chapter_id).first()
         if book_chapter_id.isdigit() else None
     )
+    if book_chapter:
+        # Library questions are separate from the subject chapters, so only the book chapter counts.
+        parser.mark_duplicates(result.questions, services.existing_keys(book_chapter=book_chapter, is_lab=import_to_labs))
+    elif deck:
+        parser.mark_duplicates(result.questions, services.existing_keys(deck, is_lab=import_to_labs))
     if book_chapter_id and not book_chapter:
         section_error = section_error or "That Library chapter no longer exists. Choose it again."
 

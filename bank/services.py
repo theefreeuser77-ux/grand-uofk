@@ -7,10 +7,14 @@ from .models import Option, Question, QuestionBank
 from .parser import question_key
 
 
-def existing_keys(bank, is_lab=False):
-    """{fingerprint: label} for questions already stored in this destination."""
+def existing_keys(bank=None, is_lab=False, book_chapter=None):
+    """{fingerprint: label} for questions already stored in this destination.
+
+    A deck's own questions exclude Library questions; a book chapter only has its own.
+    """
     keys = {}
-    for q in bank.questions.filter(
+    source = book_chapter.questions.all() if book_chapter else bank.questions.filter(book_chapter__isnull=True)
+    for q in source.filter(
         is_in_sorting_bin=False, is_in_review_bin=False, is_lab=is_lab,
     ).prefetch_related("options"):
         keys[question_key(q.kind, q.stem, [o.text for o in q.options.all()], answer=q.answer)] = q.number or f"#{q.pk}"
@@ -141,7 +145,7 @@ def save_questions(bank, parsed, skip_duplicates=True, is_lab=False, images=None
 
 def bank_as_dicts(bank):
     for q in bank.questions.filter(
-        is_in_sorting_bin=False, is_in_review_bin=False,
+        is_in_sorting_bin=False, is_in_review_bin=False, book_chapter__isnull=True,
     ).exclude(kind=Question.IMAGE).prefetch_related("options"):
         yield {
             "number": q.number, "label": q.label, "kind": q.kind, "stem": q.stem,

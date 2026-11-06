@@ -3046,7 +3046,7 @@ class LibraryTests(Base):
         self.assertEqual(self.client.post(reverse("bank:book_detail", args=[book.slug]),
                                           {"title": "Mine"}).status_code, 403)
 
-    def test_imported_questions_land_in_their_deck_and_the_book_chapter_with_the_book_label(self):
+    def test_library_questions_live_in_their_book_chapter_not_the_subject_chapter(self):
         book = self.make_book()
         thorax = book.chapters.get(number=1)
         self.client.post(reverse("bank:import"), {
@@ -3058,9 +3058,21 @@ class LibraryTests(Base):
         self.assertTrue(all(q.book_chapter_id == thorax.pk for q in questions))
         self.assertTrue(all(q.label == "Gray's Review" for q in questions))  # even the one marked U of K
 
-        # The deck's normal type tabs still have them.
+        # Library questions stay out of the subject chapter: its quizzes and counts skip them.
+        mcq_tf = self.client.get(reverse("bank:api_questions", args=[deck.slug]) + "?type=mcq_tf").json()
+        self.assertEqual(len(mcq_tf["questions"]), 0)
+        self.assertContains(self.client.get(deck.get_absolute_url()), "0 questions in this deck")
+        # Importing the same questions into the subject chapter itself is not blocked as a duplicate.
+        self.client.post(reverse("bank:import"), {
+            "action": "commit", "text": SAMPLE, "subject": self.subject.pk,
+            "semester": 1, "deck_title": "Thorax deck", "skip_dupes": "1"})
         mcq_tf = self.client.get(reverse("bank:api_questions", args=[deck.slug]) + "?type=mcq_tf").json()
         self.assertEqual(len(mcq_tf["questions"]), 2)
+        # ...but importing them into the book chapter again is.
+        self.client.post(reverse("bank:import"), {
+            "action": "commit", "text": SAMPLE, "subject": self.subject.pk,
+            "semester": 1, "deck_title": "Thorax deck", "skip_dupes": "1", "book_chapter": thorax.pk})
+        self.assertEqual(thorax.questions.count(), 3)
         # The chapter mixes every type in one quiz.
         self.assertContains(self.client.get(reverse("bank:book_detail", args=[book.slug])), "3 questions")
         quiz = self.client.get(reverse("bank:book_chapter_quiz", args=[book.slug, thorax.pk]))
