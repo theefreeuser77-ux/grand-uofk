@@ -3015,6 +3015,20 @@ class ResumeActivityTests(Base):
         self.assertContains(home, "bank/resume_activity")
 
 
+class PasswordHashingTests(Base):
+    def test_new_passwords_use_argon2_and_old_ones_upgrade_on_login(self):
+        self.assertTrue(User.objects.create_user("fresh", password="pw-12345").password.startswith("argon2$argon2id$"))
+        from django.contrib.auth.hashers import make_password
+        old = User.objects.create_user("legacy")
+        old.password = make_password("legacy-pass", hasher="pbkdf2_sha256")
+        old.save(update_fields=["password"])
+        response = self.client.post(reverse("bank:login"), {"username": "legacy", "password": "legacy-pass"})
+        self.assertEqual(response.status_code, 302)
+        old.refresh_from_db()
+        self.assertTrue(old.password.startswith("argon2$"))
+        self.assertTrue(old.check_password("legacy-pass"))
+
+
 class LoginPageTests(Base):
     def test_login_page_shows_the_arabic_name_and_a_password_eye(self):
         login = self.client.get(reverse("bank:login"))

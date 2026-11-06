@@ -5,3 +5,4 @@ gunicorn>=23,<24
 whitenoise>=6.8,<7
 Pillow>=10,<13
 pymupdf>=1.24,<2
+argon2-cffi>=23.1,<26
