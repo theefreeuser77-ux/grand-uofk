@@ -40,64 +40,79 @@
         <label><input type="radio" name="type" value="image"> Images</label>
         <label><input type="radio" name="type" value="labs"> Labs</label>
       </div>
-      <div class="study-choices">
-        <div class="study-choice study-choice-quiz">
-          {% if mcq_tf_count %}<a class="study-choice-primary" data-count-all="{{ mcq_tf_count }}" data-count-uofk="{{ uofk_mcq_tf_count }}" data-count-other="{{ other_mcq_tf_count }}" href="{% url 'bank:quiz' bank.slug %}?type=mcq_tf" aria-label="Start MCQs and True / False quiz"></a>{% endif %}
-          <span class="study-choice-top"><span>01 <i>/ QUESTION TYPE</i></span><span class="study-choice-arrow" aria-hidden="true">↗</span></span>
-          <span class="study-choice-main"><strong>MCQs &amp; True / False</strong><span>Multiple-choice and true-or-false questions.</span></span>
-          <span class="study-choice-bottom"><span class="study-choice-count"><strong data-count-all="{{ mcq_tf_count }}" data-count-uofk="{{ uofk_mcq_tf_count }}" data-count-other="{{ other_mcq_tf_count }}">{{ mcq_tf_count }}</strong> questions</span>
-            <span class="study-choice-actions">
-              <span class="study-choice-start-label">{% if mcq_tf_count %}Start MCQs &amp; True / False <span aria-hidden="true">→</span>{% else %}No questions yet{% endif %}</span>
-              {% if perms.bank.add_question %}<a class="study-choice-review" href="{% url 'bank:image_question_upload' bank.slug %}?kind=mcq">Add image question</a>{% endif %}
-              {% if user.is_staff %}<a class="study-choice-review" href="{% url 'bank:review_deck' bank.slug %}?type=mcq_tf">Review &amp; edit</a>{% endif %}
-            </span>
-          </span>
-        </div>
-        <div class="study-choice study-choice-recall">
-          {% if descriptive_count %}<a class="study-choice-primary" data-count-all="{{ descriptive_count }}" data-count-uofk="{{ uofk_descriptive_count }}" data-count-other="{{ other_descriptive_count }}" href="{% url 'bank:quiz' bank.slug %}?type=descriptive" aria-label="Start Descriptive quiz"></a>{% endif %}
-          <span class="study-choice-top"><span>02 <i>/ QUESTION TYPE</i></span><span class="study-choice-arrow" aria-hidden="true">↗</span></span>
-          <span class="study-choice-main"><strong>Descriptive</strong><span>Descriptive questions and flashcards.</span></span>
-          <span class="study-choice-bottom"><span class="study-choice-count"><strong data-count-all="{{ descriptive_count }}" data-count-uofk="{{ uofk_descriptive_count }}" data-count-other="{{ other_descriptive_count }}">{{ descriptive_count }}</strong> questions</span>
-            <span class="study-choice-actions">
-              <span class="study-choice-start-label">{% if descriptive_count %}Start Descriptive <span aria-hidden="true">→</span>{% else %}No questions yet{% endif %}</span>
-              {% if perms.bank.add_question %}<a class="study-choice-review" href="{% url 'bank:image_question_upload' bank.slug %}?kind=desc">Add image question</a>{% endif %}
-              {% if user.is_staff %}<a class="study-choice-review" href="{% url 'bank:review_deck' bank.slug %}?type=descriptive">Review &amp; edit</a>{% endif %}
-            </span>
-          </span>
-        </div>
-        <div class="study-choice study-choice-image">
-          {% if image_count %}<a class="study-choice-primary" data-count-all="{{ image_count }}" data-count-uofk="{{ uofk_image_count }}" data-count-other="{{ other_image_count }}" href="{% url 'bank:quiz' bank.slug %}?type=image" aria-label="Start all image questions"></a>{% endif %}
-          <span class="study-choice-top"><span>03 <i>/ QUESTION TYPE</i></span><span class="study-choice-arrow" aria-hidden="true">↗</span></span>
-          <span class="study-choice-main"><strong>Identify</strong><span>Image questions, including labelled structures and image-based MCQs.</span></span>
-          <span class="study-choice-bottom"><span class="study-choice-count"><strong data-count-all="{{ image_count }}" data-count-uofk="{{ uofk_image_count }}" data-count-other="{{ other_image_count }}">{{ image_count }}</strong> image questions</span>
-            <span class="study-choice-actions">
-              <span class="image-quiz-links">
-                {% if image_count %}<a data-count-all="{{ image_count }}" data-count-uofk="{{ uofk_image_count }}" data-count-other="{{ other_image_count }}" href="{% url 'bank:quiz' bank.slug %}?type=image">Start Identify</a>{% endif %}
-                {% if perms.bank.add_question %}<a href="{% url 'bank:image_question_upload' bank.slug %}?kind=identify">Add image question</a>{% endif %}
-              </span>
-              {% if user.is_staff %}
-                <span class="image-review-links">
-                  <a href="{% url 'bank:review_deck' bank.slug %}?type=image">Review Identify</a>
-                </span>
-              {% endif %}
-            </span>
-          </span>
-        </div>
-        <div class="study-choice study-choice-labs">
-          {% if lab_count %}<a class="study-choice-primary" data-count-all="{{ lab_count }}" data-count-uofk="{{ uofk_lab_count }}" data-count-other="{{ other_lab_count }}" href="{% url 'bank:quiz' bank.slug %}?type=labs" aria-label="Start Labs mixed-format quiz"></a>{% endif %}
-          <span class="study-choice-top"><span>04 <i>/ QUESTION TYPE</i></span><span class="study-choice-arrow" aria-hidden="true">↗</span></span>
-          <span class="study-choice-main"><strong>Labs</strong><span>Mixed practice: MCQs, True / False, descriptive, and image questions.</span></span>
-          <span class="study-choice-bottom"><span class="study-choice-count"><strong data-count-all="{{ lab_count }}" data-count-uofk="{{ uofk_lab_count }}" data-count-other="{{ other_lab_count }}">{{ lab_count }}</strong> questions</span>
-            <span class="study-choice-actions">
-              <span class="study-choice-start-label">{% if lab_count %}Start Labs <span aria-hidden="true">→</span>{% else %}No questions yet{% endif %}</span>
-              <span class="image-quiz-links">
-                {% if perms.bank.add_question %}<a href="{% url 'bank:import' %}?subject={{ bank.subject_id|default_if_none:"" }}&semester={{ bank.semester }}&deck_title={{ bank.title|urlencode }}&import_to_labs=1">Import questions to Labs</a>{% endif %}
-                {% if perms.bank.add_question %}<a href="{% url 'bank:image_question_upload' bank.slug %}?kind=identify&is_lab=1">Add image question to Labs</a>{% endif %}
-              </span>
-              {% if user.is_staff %}<span class="image-review-links"><a href="{% url 'bank:review_deck' bank.slug %}?type=labs">Review &amp; edit Labs</a></span>{% endif %}
-            </span>
-          </span>
-        </div>
+      <div class="type-cards">
+        <article class="type-card type-mcq{% if not mcq_tf_count %} is-empty{% endif %}" style="--i:0">
+          {% if mcq_tf_count %}<a class="type-card-link" data-count-all="{{ mcq_tf_count }}" data-count-uofk="{{ uofk_mcq_tf_count }}" data-count-other="{{ other_mcq_tf_count }}" href="{% url 'bank:quiz' bank.slug %}?type=mcq_tf" aria-label="Start MCQs and True / False quiz"></a>{% endif %}
+          <div class="type-card-head">
+            <span class="type-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6h2v2H4zM9 6h11v2H9zM4 11h2v2H4zM9 11h11v2H9zM4 16h2v2H4zM9 16h11v2H9z"/></svg></span>
+            <div><h3>MCQs &amp; True / False</h3><p>Multiple-choice and true-or-false questions.</p></div>
+          </div>
+          <div class="type-card-foot">
+            <span class="type-count"><strong data-count-all="{{ mcq_tf_count }}" data-count-uofk="{{ uofk_mcq_tf_count }}" data-count-other="{{ other_mcq_tf_count }}">{{ mcq_tf_count }}</strong> questions</span>
+            <span class="type-start">{% if mcq_tf_count %}Start <span aria-hidden="true">→</span>{% else %}No questions yet{% endif %}</span>
+          </div>
+          {% if perms.bank.add_question or user.is_staff %}
+          <div class="type-admin"><span>Editor</span>
+            {% if perms.bank.add_question %}<a href="{% url 'bank:image_question_upload' bank.slug %}?kind=mcq">Add image question</a>{% endif %}
+            {% if user.is_staff %}<a href="{% url 'bank:review_deck' bank.slug %}?type=mcq_tf">Review &amp; edit</a>{% endif %}
+          </div>
+          {% endif %}
+        </article>
+
+        <article class="type-card type-desc{% if not descriptive_count %} is-empty{% endif %}" style="--i:1">
+          {% if descriptive_count %}<a class="type-card-link" data-count-all="{{ descriptive_count }}" data-count-uofk="{{ uofk_descriptive_count }}" data-count-other="{{ other_descriptive_count }}" href="{% url 'bank:quiz' bank.slug %}?type=descriptive" aria-label="Start Descriptive quiz"></a>{% endif %}
+          <div class="type-card-head">
+            <span class="type-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 3h14v18H5zm2 2v14h10V5zm2 2h6v2H9zm0 4h6v2H9zm0 4h4v2H9z"/></svg></span>
+            <div><h3>Descriptive</h3><p>Written answers and flashcards.</p></div>
+          </div>
+          <div class="type-card-foot">
+            <span class="type-count"><strong data-count-all="{{ descriptive_count }}" data-count-uofk="{{ uofk_descriptive_count }}" data-count-other="{{ other_descriptive_count }}">{{ descriptive_count }}</strong> questions</span>
+            <span class="type-start">{% if descriptive_count %}Start <span aria-hidden="true">→</span>{% else %}No questions yet{% endif %}</span>
+          </div>
+          {% if perms.bank.add_question or user.is_staff %}
+          <div class="type-admin"><span>Editor</span>
+            {% if perms.bank.add_question %}<a href="{% url 'bank:image_question_upload' bank.slug %}?kind=desc">Add image question</a>{% endif %}
+            {% if user.is_staff %}<a href="{% url 'bank:review_deck' bank.slug %}?type=descriptive">Review &amp; edit</a>{% endif %}
+          </div>
+          {% endif %}
+        </article>
+
+        <article class="type-card type-image{% if not image_count %} is-empty{% endif %}" style="--i:2">
+          {% if image_count %}<a class="type-card-link" data-count-all="{{ image_count }}" data-count-uofk="{{ uofk_image_count }}" data-count-other="{{ other_image_count }}" href="{% url 'bank:quiz' bank.slug %}?type=image" aria-label="Start all image questions"></a>{% endif %}
+          <div class="type-card-head">
+            <span class="type-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 5h18v14H3zm2 2v8.6l4-4 3 3 2.5-2.5L19 16.6V7zm9.5 1.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z"/></svg></span>
+            <div><h3>Identify</h3><p>Labelled images and image-based MCQs.</p></div>
+          </div>
+          <div class="type-card-foot">
+            <span class="type-count"><strong data-count-all="{{ image_count }}" data-count-uofk="{{ uofk_image_count }}" data-count-other="{{ other_image_count }}">{{ image_count }}</strong> image questions</span>
+            <span class="type-start">{% if image_count %}Start <span aria-hidden="true">→</span>{% else %}No questions yet{% endif %}</span>
+          </div>
+          {% if perms.bank.add_question or user.is_staff %}
+          <div class="type-admin"><span>Editor</span>
+            {% if perms.bank.add_question %}<a href="{% url 'bank:image_question_upload' bank.slug %}?kind=identify">Add image question</a>{% endif %}
+            {% if user.is_staff %}<a href="{% url 'bank:review_deck' bank.slug %}?type=image">Review Identify</a>{% endif %}
+          </div>
+          {% endif %}
+        </article>
+
+        <article class="type-card type-labs{% if not lab_count %} is-empty{% endif %}" style="--i:3">
+          {% if lab_count %}<a class="type-card-link" data-count-all="{{ lab_count }}" data-count-uofk="{{ uofk_lab_count }}" data-count-other="{{ other_lab_count }}" href="{% url 'bank:quiz' bank.slug %}?type=labs" aria-label="Start Labs mixed-format quiz"></a>{% endif %}
+          <div class="type-card-head">
+            <span class="type-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 3h6v2h-1v4.6l5.4 8.3A2 2 0 0 1 17.7 21H6.3a2 2 0 0 1-1.7-3.1L10 9.6V5H9zm3 8.4L8.6 16h6.8z"/></svg></span>
+            <div><h3>Labs</h3><p>Mixed practice of every question type.</p></div>
+          </div>
+          <div class="type-card-foot">
+            <span class="type-count"><strong data-count-all="{{ lab_count }}" data-count-uofk="{{ uofk_lab_count }}" data-count-other="{{ other_lab_count }}">{{ lab_count }}</strong> questions</span>
+            <span class="type-start">{% if lab_count %}Start <span aria-hidden="true">→</span>{% else %}No questions yet{% endif %}</span>
+          </div>
+          {% if perms.bank.add_question or user.is_staff %}
+          <div class="type-admin"><span>Editor</span>
+            {% if perms.bank.add_question %}<a href="{% url 'bank:import' %}?subject={{ bank.subject_id|default_if_none:"" }}&semester={{ bank.semester }}&deck_title={{ bank.title|urlencode }}&import_to_labs=1">Import questions to Labs</a>
+            <a href="{% url 'bank:image_question_upload' bank.slug %}?kind=identify&is_lab=1">Add image question</a>{% endif %}
+            {% if user.is_staff %}<a href="{% url 'bank:review_deck' bank.slug %}?type=labs">Review &amp; edit</a>{% endif %}
+          </div>
+          {% endif %}
+        </article>
       </div>
       <label class="study-shuffle"><input type="checkbox" name="shuffle" value="1"><span class="study-shuffle-box" aria-hidden="true"></span><span>Shuffle question order</span></label>
     </form>
@@ -117,36 +132,30 @@
   const source = document.querySelector("#study-label-filter");
   const shuffle = document.querySelector('#study-form [name="shuffle"]');
   if (!source || !shuffle) return;
-  const links = document.querySelectorAll(".study-choice-primary, .image-quiz-links a[data-count-all]");
   const total = document.querySelector(".study-total");
-  const countKey = mode => `count${mode === "all" ? "All" : mode === "uofk" ? "Uofk" : "Other"}`;
+  const key = mode => mode === "all" ? "All" : mode === "uofk" ? "Uofk" : "Other";
   function updateOptions() {
     const mode = source.value;
-    const totalCount = Number(total.dataset[`total${mode === "all" ? "All" : mode === "uofk" ? "Uofk" : "Other"}`] || 0);
-    total.textContent = `${totalCount} questions in this deck`;
-    document.querySelectorAll(".study-choice-count [data-count-all]").forEach(count => {
-      count.textContent = count.dataset[countKey(mode)] || "0";
+    total.textContent = `${Number(total.dataset[`total${key(mode)}`] || 0)} questions in this deck`;
+    document.querySelectorAll(".type-count [data-count-all]").forEach(count => {
+      count.textContent = count.dataset[`count${key(mode)}`] || "0";
     });
-    links.forEach(link => {
-      const count = Number(link.dataset[countKey(mode)] || 0);
+    document.querySelectorAll(".type-card").forEach(card => {
+      const link = card.querySelector(".type-card-link");
+      const label = card.querySelector(".type-start");
+      if (!link) return;
+      const available = Number(link.dataset[`count${key(mode)}`] || 0) > 0;
       const target = new URL(link.href, location.href);
       if (mode === "all") target.searchParams.delete("label");
       else target.searchParams.set("label", mode);
       if (shuffle.checked) target.searchParams.set("shuffle", "1");
       else target.searchParams.delete("shuffle");
       link.href = target.toString();
-      link.setAttribute("aria-disabled", count > 0 ? "false" : "true");
-      link.tabIndex = count > 0 ? 0 : -1;
-    });
-    document.querySelectorAll(".study-choice").forEach(card => {
-      const link = card.querySelector(".study-choice-primary");
-      const label = card.querySelector(".study-choice-start-label");
-      if (link && label) {
-        if (!label.dataset.availableText) label.dataset.availableText = label.textContent.trim();
-        label.textContent = Number(link.dataset[countKey(mode)] || 0) > 0
-          ? label.dataset.availableText
-          : "No questions for this source";
-      }
+      link.setAttribute("aria-disabled", available ? "false" : "true");
+      link.tabIndex = available ? 0 : -1;
+      card.classList.toggle("is-empty", !available);
+      if (!label.dataset.availableHtml) label.dataset.availableHtml = label.innerHTML;
+      label.innerHTML = available ? label.dataset.availableHtml : "No questions for this source";
     });
   }
   source.addEventListener("change", updateOptions);
