@@ -12,12 +12,6 @@
     </nav>
     <h2 class="page-title">{{ bank.title }}</h2>
     {% if bank.description %}<p class="page-lede">{{ bank.description }}</p>{% endif %}
-    <div class="page-stats">
-      <span><b>{{ count|floatformat:"0g" }}</b> question{{ count|pluralize }}</span>
-      {% if mcq_tf_count %}<span><b>{{ mcq_tf_count|floatformat:"0g" }}</b> MCQ &amp; T/F</span>{% endif %}
-      {% if descriptive_count %}<span><b>{{ descriptive_count|floatformat:"0g" }}</b> descriptive</span>{% endif %}
-      {% if image_count %}<span><b>{{ image_count|floatformat:"0g" }}</b> image</span>{% endif %}
-    </div>
     <a class="page-hero-cta" href="{% url 'bank:deck_exams' bank.slug %}">Set up a mock exam <span aria-hidden="true">→</span></a>
   </section>
 

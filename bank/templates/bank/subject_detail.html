@@ -9,7 +9,6 @@
     <div class="page-stats">
       {% if sections %}<span><b>{{ sections|length }}</b> section{{ sections|length|pluralize }}</span>{% endif %}
       <span><b>{{ decks|length }}</b> chapter{{ decks|length|pluralize }}</span>
-      <span><b>{{ total_questions|floatformat:"0g" }}</b> question{{ total_questions|pluralize }}</span>
     </div>
     {% if decks %}
     <a class="page-hero-cta" href="{% url 'bank:subject_exams' subject.slug %}">Set up a mock exam <span aria-hidden="true">→</span></a>

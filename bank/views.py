@@ -228,7 +228,7 @@ def subject_detail(request, slug):
         ),
     )
     return render(request, "bank/subject_detail.html", {
-        "subject": subject, "decks": decks, "total_questions": sum(d.n for d in decks),
+        "subject": subject, "decks": decks,
         "sections": sections, "unsectioned_decks": decks.filter(section__isnull=True),
     })
 
@@ -240,9 +240,7 @@ def section_detail(request, slug, section_slug):
     decks = section.decks.annotate(
         n=Count("questions", filter=Q(questions__is_in_sorting_bin=False, questions__is_in_review_bin=False))
     ).order_by("semester", "title")
-    total_questions = sum(d.n for d in decks)
     return render(request, "bank/section_detail.html", {
-        "total_questions": total_questions,
         "subject": subject, "section": section, "decks": decks,
     })
 
@@ -2300,9 +2298,7 @@ def library_home(request):
             chapters__questions__is_in_sorting_bin=False, chapters__questions__is_in_review_bin=False,
         ), distinct=True),
     )
-    books = list(books)
-    return render(request, "bank/library_home.html", {
-        "books": books, "error": error, "total_questions": sum(b.n_questions for b in books)},
+    return render(request, "bank/library_home.html", {"books": books, "error": error},
                   status=400 if error else 200)
 
 
@@ -2327,9 +2323,7 @@ def book_detail(request, slug):
             messages.success(request, f"Added chapter {chapter.number}. {chapter.title}.")
             return redirect(book)
     chapters = book.chapters.annotate(n_questions=Count("questions", filter=LIVE_QUESTIONS))
-    chapters = list(chapters)
-    return render(request, "bank/book_detail.html", {
-        "book": book, "chapters": chapters, "error": error, "total_questions": sum(c.n_questions for c in chapters)},
+    return render(request, "bank/book_detail.html", {"book": book, "chapters": chapters, "error": error},
                   status=400 if error else 200)
 
 
