@@ -203,7 +203,14 @@ def home(request):
     unfiled = QuestionBank.objects.filter(subject__isnull=True).annotate(
         n=Count("questions", filter=Q(questions__is_in_sorting_bin=False, questions__is_in_review_bin=False))
     )
-    return render(request, "bank/home.html", {"subjects": subjects, "unfiled": unfiled})
+    subjects = list(subjects)
+    return render(request, "bank/home.html", {
+        "subjects": subjects, "unfiled": unfiled,
+        "total_questions": sum(s.n_q for s in subjects),
+        "total_chapters": sum(s.n_decks for s in subjects),
+        "saved_count": request.user.saved_questions.count() if request.user.is_authenticated else 0,
+        "book_count": Book.objects.count(),
+    })
 
 
 @login_required

@@ -1,31 +1,108 @@
 {% extends "bank/base.html" %}
+{% block head %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@700&display=swap">
+{% endblock %}
 {% block content %}
-<section class="home-poem" aria-label="Rawasi poem">
-  <span class="poem-ornament" aria-hidden="true"></span>
-  <blockquote lang="ar" dir="rtl">
-    <span>سُمُّوا رَوَاسِيَ بِالْجِبَالِ تَيَمُّناً</span>
-    <span>لَا كَالسَّفِينِ الرَّاسِيَاتِ رُكُودَا</span>
-  </blockquote>
-</section>
-{% if not subjects %}
-<div class="card">
-  <p>No subjects yet.</p>
-  <p class="mute">Run <code>python manage.py seed_subjects</code> (or add them in <a href="{% url 'admin:bank_subject_add' %}">Admin</a>), then import some questions.</p>
+<div class="home">
+  <section class="home-hero" aria-label="Welcome">
+    <div class="hero-sky" aria-hidden="true">
+      <span class="hero-sun"></span>
+      <span class="hero-star" style="--x:72%;--y:18%;--d:0s"></span>
+      <span class="hero-star" style="--x:84%;--y:34%;--d:1.2s"></span>
+      <span class="hero-star" style="--x:63%;--y:30%;--d:2.1s"></span>
+      <span class="hero-star" style="--x:91%;--y:14%;--d:.6s"></span>
+      <span class="hero-star" style="--x:56%;--y:12%;--d:1.7s"></span>
+    </div>
+    <svg class="hero-mountains" viewBox="0 0 1200 220" preserveAspectRatio="none" aria-hidden="true">
+      <g class="ridge ridge-back"><path d="M0 140 L120 90 L210 130 L330 50 L450 120 L560 70 L690 140 L800 60 L930 125 L1040 80 L1200 140 L1200 220 L0 220Z"/><path d="M1200 140 L1320 90 L1410 130 L1530 50 L1650 120 L1760 70 L1890 140 L2000 60 L2130 125 L2240 80 L2400 140 L2400 220 L1200 220Z"/></g>
+      <g class="ridge ridge-mid"><path d="M0 150 L150 120 L260 165 L400 95 L520 160 L640 110 L780 175 L900 105 L1040 170 L1200 150 L1200 220 L0 220Z"/><path d="M1200 150 L1350 120 L1460 165 L1600 95 L1720 160 L1840 110 L1980 175 L2100 105 L2240 170 L2400 150 L2400 220 L1200 220Z"/></g>
+      <g class="ridge ridge-front"><path d="M0 200 L180 150 L300 185 L470 135 L600 190 L760 145 L900 195 L1060 150 L1200 200 L1200 220 L0 220Z"/><path d="M1200 200 L1380 150 L1500 185 L1670 135 L1800 190 L1960 145 L2100 195 L2260 150 L2400 200 L2400 220 L1200 220Z"/></g>
+    </svg>
+
+    <div class="hero-content">
+      <p class="hero-greeting" data-greeting data-name="{{ user.get_username }}">Welcome back, {{ user.get_username }}</p>
+      <blockquote class="hero-poem" lang="ar" dir="rtl">
+        <span>سُمُّوا رَوَاسِيَ بِالْجِبَالِ تَيَمُّناً</span>
+        <span>لَا كَالسَّفِينِ الرَّاسِيَاتِ رُكُودَا</span>
+      </blockquote>
+      <dl class="hero-stats">
+        <div><dt>Questions</dt><dd data-count="{{ total_questions }}">{{ total_questions }}</dd></div>
+        <div><dt>Chapters</dt><dd data-count="{{ total_chapters }}">{{ total_chapters }}</dd></div>
+        <div><dt>Subjects</dt><dd data-count="{{ subjects|length }}">{{ subjects|length }}</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <div class="home-quick">
+    <a class="quick-card" href="{% url 'bank:saved_home' %}" style="--i:0">
+      <span class="quick-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4z"/></svg></span>
+      <span class="quick-text"><strong>Saved questions</strong><span>{{ saved_count }} saved to revise</span></span>
+      <span class="quick-arrow" aria-hidden="true">→</span>
+    </a>
+    <a class="quick-card" href="{% url 'bank:library_home' %}" style="--i:1">
+      <span class="quick-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 4h5v16H4zM10 4h4v16h-4zM15.5 5.2l4-1 3.4 14.6-4 1z"/></svg></span>
+      <span class="quick-text"><strong>Library</strong><span>{{ book_count }} book{{ book_count|pluralize }} by chapter</span></span>
+      <span class="quick-arrow" aria-hidden="true">→</span>
+    </a>
+  </div>
+
+  {% if not subjects %}
+  <div class="card">
+    <p>No subjects yet.</p>
+    <p class="mute">Run <code>python manage.py seed_subjects</code> (or add them in <a href="{% url 'admin:bank_subject_add' %}">Admin</a>), then import some questions.</p>
+  </div>
+  {% else %}
+  <h2 class="section-title">Subjects</h2>
+  <div class="subject-cards">
+    {% for s in subjects %}
+    <a class="subject-card" href="{{ s.get_absolute_url }}" style="--i:{{ forloop.counter0 }}">
+      <span class="subject-mark" aria-hidden="true">{{ s.name|slice:":1" }}</span>
+      <span class="subject-name">{{ s.name }}</span>
+      <span class="subject-meta">{{ s.n_decks }} chapter{{ s.n_decks|pluralize }} · {{ s.n_q|floatformat:"0g" }} question{{ s.n_q|pluralize }}</span>
+      <span class="subject-go" aria-hidden="true">Open <span>→</span></span>
+      <svg class="subject-peaks" viewBox="0 0 300 60" preserveAspectRatio="none" aria-hidden="true"><path d="M0 60 L60 25 L95 42 L150 8 L205 40 L240 22 L300 50 L300 60Z"/></svg>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if unfiled %}
+  <h2 class="semband" style="margin-top:22px">Not filed yet</h2>
+  <div class="grid">
+    {% for d in unfiled %}<a class="set" href="{{ d.get_absolute_url }}"><h3>{{ d.title }} <span class="mute">· {{ d.n }} questions</span></h3></a>{% endfor %}
+  </div>
+  {% if user.is_staff %}<p class="mute">Give these decks a subject and semester in <a href="{% url 'admin:bank_questionbank_changelist' %}">Admin → Decks</a> (you can edit them right in the list).</p>{% endif %}
+  {% endif %}
 </div>
-{% endif %}
-{% if subjects %}<h2 class="section-title">Subjects</h2>{% endif %}
-<div class="blocks">
-  {% for s in subjects %}
-  <a class="block" href="{{ s.get_absolute_url }}">
-    <div class="bname">{{ s.name }}</div>
-  </a>
-  {% endfor %}
-</div>
-{% if unfiled %}
-<h2 class="semband" style="margin-top:22px">Not filed yet</h2>
-<div class="grid">
-  {% for d in unfiled %}<a class="set" href="{{ d.get_absolute_url }}"><h3>{{ d.title }} <span class="mute">· {{ d.n }} questions</span></h3></a>{% endfor %}
-</div>
-{% if user.is_staff %}<p class="mute">Give these decks a subject and semester in <a href="{% url 'admin:bank_questionbank_changelist' %}">Admin → Decks</a> (you can edit them right in the list).</p>{% endif %}
-{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+(() => {
+  const greeting = document.querySelector("[data-greeting]");
+  if (greeting) {
+    const hour = new Date().getHours();
+    const part = hour < 5 ? "Up late" : hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+    greeting.textContent = `${part}, ${greeting.dataset.name}`;
+  }
+  const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  document.querySelectorAll("[data-count]").forEach((el, index) => {
+    const target = Number(el.dataset.count) || 0;
+    el.textContent = target.toLocaleString();
+    if (still || target < 2) return;
+    el.textContent = "0";
+    const duration = 1400, delay = 350 + index * 120;
+    let start = null;
+    const tick = now => {
+      if (start === null) start = now;
+      const t = Math.min(1, Math.max(0, (now - start - delay) / duration));
+      const eased = 1 - Math.pow(1 - t, 3);
+      el.textContent = Math.round(target * eased).toLocaleString();
+      if (t < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+})();
+</script>
 {% endblock %}
