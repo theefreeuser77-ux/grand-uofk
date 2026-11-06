@@ -477,6 +477,30 @@ class UserSettingsTests(Base):
         self.assertContains(response, 'value="en"')
         self.assertContains(response, 'value="ar"')
         self.assertContains(response, f'data-user="{self.student.pk}"')
+        self.assertContains(response, "Change password")
+        self.assertContains(response, "Student")
+
+    def test_password_change_checks_the_old_password_and_keeps_this_device_signed_in(self):
+        self.client.force_login(self.student)
+        url = reverse("bank:settings")
+        wrong = self.client.post(url, {
+            "action": "password", "old_password": "nope",
+            "new_password1": "Fresh-Pass-2026", "new_password2": "Fresh-Pass-2026",
+        })
+        self.assertEqual(wrong.status_code, 200)
+        self.assertContains(wrong, "Your old password was entered incorrectly")
+        self.assertContains(wrong, '<details class="settings-password" open>')
+        self.student.refresh_from_db()
+        self.assertTrue(self.student.check_password("pw"))
+
+        done = self.client.post(url, {
+            "action": "password", "old_password": "pw",
+            "new_password1": "Fresh-Pass-2026", "new_password2": "Fresh-Pass-2026",
+        }, follow=True)
+        self.assertContains(done, "Password changed")
+        self.student.refresh_from_db()
+        self.assertTrue(self.student.check_password("Fresh-Pass-2026"))
+        self.assertEqual(self.client.get(url).status_code, 200)  # still signed in
 
 
 class SubjectSectionSeedTests(TestCase):

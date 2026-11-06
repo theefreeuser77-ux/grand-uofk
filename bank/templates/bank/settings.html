@@ -1,46 +1,90 @@
 {% extends "bank/base.html" %}
 {% block title %}Settings{% endblock %}
 {% block content %}
-<h2 class="pagetitle">Settings</h2>
-<section class="card settings-card">
-  <h3>Appearance</h3>
-  <p class="mute">Choose the theme for this browser.</p>
-  <button class="theme-toggle" type="button" aria-label="Switch to light mode" aria-pressed="true">
-    <span class="theme-icon" aria-hidden="true">☼</span>
-    <span class="theme-label">Light mode</span>
-  </button>
-</section>
-<section class="card settings-card">
-  <h3>اتونس 😁 button</h3>
-  <p class="mute">Choose which AI the button opens and the language it should explain in. These preferences are saved in this browser.</p>
-  <form id="settings-form" data-user="{{ request.user.pk }}">
-    <fieldset class="settings-language-options">
-      <legend>AI</legend>
-      <label><input type="radio" name="ai-site" value="chatgpt"> ChatGPT</label>
-      <label><input type="radio" name="ai-site" value="claude"> Claude</label>
-      <label><input type="radio" name="ai-site" value="gemini"> Gemini</label>
-      <label><input type="radio" name="ai-site" value="deepseek"> DeepSeek</label>
-      <label><input type="radio" name="ai-site" value="grok"> Grok</label>
-      <label><input type="radio" name="ai-site" value="copilot"> Copilot</label>
-      <label><input type="radio" name="ai-site" value="perplexity"> Perplexity</label>
-    </fieldset>
-    <p class="mute">ChatGPT opens with the question already typed. The others open empty: the question is copied, so paste it in (Ctrl+V or long-press → Paste). If the question has an image, a “Copy image” button appears to paste it next.</p>
-    <fieldset class="settings-language-options">
-      <legend>Explanation</legend>
-      <label><input type="radio" name="ai-depth" value="regular"> Regular — the correct answer and why each other one is wrong</label>
-      <label><input type="radio" name="ai-depth" value="deep"> Deep — the same, then a dive into the whole topic</label>
-    </fieldset>
-    <fieldset class="settings-language-options">
-      <legend>Response language</legend>
-      <label><input type="radio" name="ai-language" value="en"> English</label>
-      <label><input type="radio" name="ai-language" value="ar"> العربية</label>
-    </fieldset>
-    <button class="btn pri" type="submit">Save settings</button>
-    <span id="settings-status" class="mute" role="status" aria-live="polite"></span>
-  </form>
-</section>
+<div class="settings-page">
+  <header class="settings-account">
+    <span class="settings-avatar" aria-hidden="true">{{ request.user.get_username|slice:":1"|upper }}</span>
+    <div class="settings-account-text">
+      <h2 class="pagetitle">Settings</h2>
+      <p><strong>{{ request.user.get_username }}</strong> <span class="settings-role">{{ role }}</span></p>
+      <p class="mute">Member since {{ request.user.date_joined|date:"F Y" }}</p>
+    </div>
+  </header>
+
+  <div class="settings-grid">
+    <section class="settings-section" aria-labelledby="appearance-title">
+      <h3 id="appearance-title">Appearance</h3>
+      <p class="mute">The theme for this browser.</p>
+      <button class="theme-toggle" type="button" aria-label="Switch to light mode" aria-pressed="true">
+        <span class="theme-icon" aria-hidden="true">☼</span>
+        <span class="theme-label">Light mode</span>
+      </button>
+    </section>
+
+    <section class="settings-section" aria-labelledby="password-title">
+      <h3 id="password-title">Password</h3>
+      <p class="mute">Changing it signs you out on every other device.</p>
+      <details class="settings-password"{% if password_open %} open{% endif %}>
+        <summary class="btn">Change password</summary>
+        <form method="post" class="settings-password-form" novalidate>
+          {% csrf_token %}
+          <input type="hidden" name="action" value="password">
+          {{ password_form.non_field_errors }}
+          {% for field in password_form %}
+          <div class="field">
+            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {{ field.errors }}
+            {% if field.name == "new_password1" %}<p class="mute settings-hint">At least 8 characters, not only numbers, and not too close to your username.</p>{% endif %}
+          </div>
+          {% endfor %}
+          <button class="btn pri" type="submit">Save new password</button>
+        </form>
+      </details>
+    </section>
+
+    <section class="settings-section settings-wide" aria-labelledby="ai-title">
+      <h3 id="ai-title">اتونس 😁 button</h3>
+      <p class="mute">Which AI the button opens, and how it explains. Saved in this browser.</p>
+      <form id="settings-form" data-user="{{ request.user.pk }}">
+        <fieldset class="settings-choices">
+          <legend>AI</legend>
+          <div class="settings-chips">
+            <label class="settings-chip"><input type="radio" name="ai-site" value="chatgpt"><span>ChatGPT</span></label>
+            <label class="settings-chip"><input type="radio" name="ai-site" value="claude"><span>Claude</span></label>
+            <label class="settings-chip"><input type="radio" name="ai-site" value="gemini"><span>Gemini</span></label>
+            <label class="settings-chip"><input type="radio" name="ai-site" value="deepseek"><span>DeepSeek</span></label>
+            <label class="settings-chip"><input type="radio" name="ai-site" value="grok"><span>Grok</span></label>
+            <label class="settings-chip"><input type="radio" name="ai-site" value="copilot"><span>Copilot</span></label>
+            <label class="settings-chip"><input type="radio" name="ai-site" value="perplexity"><span>Perplexity</span></label>
+          </div>
+          <p class="mute settings-hint">ChatGPT opens with the question already typed. The others open empty and the question is copied, so paste it in. If the question has an image, a “Copy image” button appears so you can paste that too.</p>
+        </fieldset>
+        <fieldset class="settings-choices">
+          <legend>Explanation</legend>
+          <div class="settings-chips settings-chips-stack">
+            <label class="settings-chip"><input type="radio" name="ai-depth" value="regular"><span><b>Regular</b> The correct answer, and why each other one is wrong</span></label>
+            <label class="settings-chip"><input type="radio" name="ai-depth" value="deep"><span><b>Deep</b> The same, then a dive into the whole topic</span></label>
+          </div>
+        </fieldset>
+        <fieldset class="settings-choices">
+          <legend>Response language</legend>
+          <div class="settings-chips">
+            <label class="settings-chip"><input type="radio" name="ai-language" value="en"><span>English</span></label>
+            <label class="settings-chip"><input type="radio" name="ai-language" value="ar"><span lang="ar">العربية</span></label>
+          </div>
+        </fieldset>
+        <div class="settings-save">
+          <button class="btn pri" type="submit">Save settings</button>
+          <span id="settings-status" class="mute" role="status" aria-live="polite"></span>
+        </div>
+      </form>
+    </section>
+  </div>
+</div>
 {% endblock %}
 {% block scripts %}
+{% include "bank/_password_toggle.html" %}
 <script>
 (() => {
   const form = document.getElementById("settings-form");
@@ -62,6 +106,7 @@
     depths[0].checked = true;
     status.textContent = "Could not read the saved preferences; ChatGPT, Regular and English are selected.";
   }
+  form.addEventListener("change", () => { status.textContent = "Not saved yet."; });
   form.addEventListener("submit", event => {
     event.preventDefault();
     const selected = form.querySelector('input[name="ai-language"]:checked');

@@ -3634,3 +3634,46 @@ button,.btn{border-radius:5px}
 .restore-point-form{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .restore-point-form input[type=text]{width:130px}
 .visually-hidden{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ---- Settings page ---- */
+.settings-page{display:grid;gap:18px;max-width:920px}
+.settings-account{display:flex;align-items:center;justify-content:flex-start;flex-wrap:nowrap;gap:16px;margin:0;padding:18px 20px;border-radius:16px;
+  background:linear-gradient(135deg,#471d10,#2d2d2d);color:#fbf3e6;position:relative;overflow:hidden}
+.settings-account::after{content:"";position:absolute;right:-40px;top:-40px;width:140px;height:140px;border-radius:50%;
+  border:2px solid rgba(233,171,17,.35)}
+.settings-avatar{flex:none;width:58px;height:58px;border-radius:50%;display:grid;place-items:center;
+  background:#e9ab11;color:#2d2d2d;font-family:var(--font-display);font-size:1.7rem;font-weight:700}
+.settings-account-text{min-width:0}
+.settings-account .pagetitle{margin:0;color:#ffcc5e}
+.settings-account p{margin:2px 0 0;overflow-wrap:anywhere}
+.settings-account .mute{color:#e4cc85}
+.settings-role{display:inline-block;margin-left:6px;padding:1px 9px;border-radius:99px;border:1px solid #e9ab11;
+  color:#ffcc5e;font-size:.78rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;vertical-align:1px}
+.settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:14px;align-items:start}
+.settings-section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;min-width:0}
+.settings-section h3{margin:0 0 2px;display:flex;align-items:center;gap:8px}
+.settings-section h3::before{content:"";width:4px;height:1.05em;border-radius:2px;background:var(--brand-gold)}
+.settings-section>.mute{margin:0 0 12px}
+.settings-wide{grid-column:1/-1}
+.settings-hint{font-size:.86rem;margin:6px 0 0}
+.settings-password summary{list-style:none;width:max-content}
+.settings-password summary::-webkit-details-marker{display:none}
+.settings-password[open] summary{display:none}
+.settings-password-form{display:grid;gap:4px;max-width:380px}
+.settings-password-form .field input{width:100%}
+.settings-password-form .btn.pri{justify-self:start;margin-top:4px}
+.settings-choices{border:0;margin:0 0 14px;padding:0;min-width:0}
+.settings-choices legend{font-weight:700;margin-bottom:8px;padding:0}
+.settings-chips{display:flex;flex-wrap:wrap;gap:8px}
+.settings-chips-stack{flex-direction:column}
+.settings-chip{position:relative;cursor:pointer}
+.settings-chip input{position:absolute;opacity:0;pointer-events:none}
+.settings-chip span{display:block;padding:8px 14px;border-radius:99px;border:1px solid var(--line);background:var(--bg);
+  transition:background .15s,border-color .15s,color .15s}
+.settings-chips-stack .settings-chip span{border-radius:12px;padding:10px 14px}
+.settings-chips-stack b{display:block}
+.settings-chip:hover span{border-color:#e9ab11}
+.settings-chip input:checked+span{background:#471d10;border-color:#e9ab11;color:#ffcc5e}
+.settings-chip input:focus-visible+span{outline:3px solid #e9ab11;outline-offset:2px}
+.settings-save{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+@media (max-width:520px){.settings-account{padding:16px}.settings-avatar{width:48px;height:48px;font-size:1.4rem}}

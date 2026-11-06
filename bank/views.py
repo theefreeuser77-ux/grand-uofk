@@ -8,7 +8,8 @@ from datetime import timedelta
 from django import forms
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth import get_user_model, login, logout
+from django.contrib.auth import get_user_model, login, logout, update_session_auth_hash
+from django.contrib.auth.forms import PasswordChangeForm
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import LoginView, redirect_to_login
 from django.contrib.admin.views.decorators import staff_member_required
@@ -2398,7 +2399,22 @@ def saved_remove(request, pk):
 
 @login_required
 def user_settings(request):
-    return render(request, "bank/settings.html")
+    password_form = PasswordChangeForm(request.user)
+    if request.method == "POST" and request.POST.get("action") == "password":
+        password_form = PasswordChangeForm(request.user, request.POST)
+        if password_form.is_valid():
+            user = password_form.save()
+            # Keeps this device signed in; every other device signed in with the old password is signed out.
+            update_session_auth_hash(request, user)
+            messages.success(request, "Password changed. Other devices signed in with your old password are now signed out.")
+            return redirect("bank:settings")
+    user = request.user
+    role = "Admin" if user.is_staff else "Editor" if user.has_perm("bank.change_question") else "Student"
+    return render(request, "bank/settings.html", {
+        "password_form": password_form,
+        "role": role,
+        "password_open": password_form.is_bound,
+    })
 
 
 # ---------------------------------------------------------------- editor pages
