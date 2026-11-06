@@ -10,6 +10,7 @@ from unittest.mock import patch
 from django.contrib.auth.models import Permission, User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
+from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -48,6 +49,7 @@ def give(user, *codenames):
 
 class Base(TestCase):
     def setUp(self):
+        cache.clear()  # home page counts are cached for a week
         self.subject = Subject.objects.create(name="Physiology")
         self.editor = User.objects.create_user("ed", password="pw")
         give(self.editor, "add_question", "change_question", "delete_question")
@@ -944,6 +946,9 @@ class BrowseAndImportTests(Base):
         self.assertNotContains(home, "Forecasts for clouds")
         self.assertNotContains(home, "deck ·")
         self.assertNotContains(home, "question ·")
+        # The counts are reused from the weekly cache: a new question doesn't show until it expires.
+        Question.objects.create(bank=deck, stem="Added later")
+        self.assertContains(self.client.get(reverse("bank:home")), 'data-count="2"')
         page = self.client.get(self.subject.get_absolute_url())
         self.assertContains(page, "Semester 1")
         self.assertContains(page, deck.title)

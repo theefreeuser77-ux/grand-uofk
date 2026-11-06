@@ -190,26 +190,47 @@ def json_body(request):
 
 
 # ---------------------------------------------------------------- browsing
+HOME_COUNTS_KEY = "bank:home-counts"
+HOME_COUNTS_SECONDS = 7 * 24 * 60 * 60
+
+
+def _home_counts():
+    """Chapter and question counts per subject, plus the number of books, recounted once a week.
+
+    The exact numbers matter to nobody, so the home page reuses one count instead of
+    counting every question on every visit.
+    """
+    counts = cache.get(HOME_COUNTS_KEY)
+    if counts is None:
+        rows = Subject.objects.annotate(
+            n_decks=Count("decks", distinct=True),
+            n_q=Count(
+                "decks__questions",
+                filter=Q(decks__questions__is_in_sorting_bin=False, decks__questions__is_in_review_bin=False),
+                distinct=True,
+            ),
+        ).values_list("pk", "n_decks", "n_q")
+        counts = {"subjects": {pk: (decks, questions) for pk, decks, questions in rows},
+                  "books": Book.objects.count()}
+        cache.set(HOME_COUNTS_KEY, counts, HOME_COUNTS_SECONDS)
+    return counts
+
+
 @login_required
 def home(request):
-    subjects = Subject.objects.annotate(
-        n_decks=Count("decks", distinct=True),
-        n_q=Count(
-            "decks__questions",
-            filter=Q(decks__questions__is_in_sorting_bin=False, decks__questions__is_in_review_bin=False),
-            distinct=True,
-        ),
-    ).order_by("order", "name")
+    counts = _home_counts()
+    subjects = list(Subject.objects.order_by("order", "name"))
+    for subject in subjects:
+        subject.n_decks, subject.n_q = counts["subjects"].get(subject.pk, (0, 0))
     unfiled = QuestionBank.objects.filter(subject__isnull=True).annotate(
         n=Count("questions", filter=Q(questions__is_in_sorting_bin=False, questions__is_in_review_bin=False))
     )
-    subjects = list(subjects)
     return render(request, "bank/home.html", {
         "subjects": subjects, "unfiled": unfiled,
         "total_questions": sum(s.n_q for s in subjects),
         "total_chapters": sum(s.n_decks for s in subjects),
         "saved_count": request.user.saved_questions.count() if request.user.is_authenticated else 0,
-        "book_count": Book.objects.count(),
+        "book_count": counts["books"],
     })
 
 
