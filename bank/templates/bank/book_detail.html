@@ -1,15 +1,23 @@
 {% extends "bank/base.html" %}
 {% block title %}{{ book.title }} · Library{% endblock %}
 {% block content %}
-<p class="crumbs"><a href="{% url 'bank:library_home' %}">Library</a> › {{ book.title }}</p>
-<div class="book-detail-head">
+<div class="inner-page">
+<section class="page-hero page-hero-book">
+  {% include "bank/_hero_peaks.html" %}
   <span class="book-cover book-cover-small book-tone-{{ book.cover_tone }}" aria-hidden="true"><span class="book-cover-title">{{ book.title }}</span></span>
-  <div><h2 class="pagetitle">{{ book.title }}</h2>
-    <p class="mute">{{ chapters|length }} chapter{{ chapters|length|pluralize }} · pick one to practise every question type in it</p></div>
-</div>
+  <div class="page-hero-copy">
+    <nav class="page-crumbs" aria-label="Breadcrumb"><a href="{% url 'bank:library_home' %}">Library</a><span aria-hidden="true">/</span><span>{{ book.title }}</span></nav>
+    <h2 class="page-title">{{ book.title }}</h2>
+    <div class="page-stats">
+      <span><b>{{ chapters|length }}</b> chapter{{ chapters|length|pluralize }}</span>
+      <span><b>{{ total_questions|floatformat:"0g" }}</b> question{{ total_questions|pluralize }}</span>
+    </div>
+  </div>
+</section>
+<p class="mute">Pick a chapter to practise every question type in it.</p>
 <div class="library-chapters">
   {% for chapter in chapters %}
-  <div class="card library-chapter">
+  <div class="card library-chapter" style="--i:{{ forloop.counter0 }}">
     <div class="library-chapter-copy">
       <h3><span class="library-chapter-number">{{ chapter.number }}</span> {{ chapter.title }}</h3>
       <p class="mute">{{ chapter.n_questions }} question{{ chapter.n_questions|pluralize }}</p>
@@ -36,4 +44,5 @@
   <p class="mute" style="margin-bottom:0">To put questions in a chapter, use <b>Import questions</b> on it, or choose the chapter when editing a question. To rename or delete, ask an admin.</p>
 </form>
 {% endif %}
+</div>
 {% endblock %}

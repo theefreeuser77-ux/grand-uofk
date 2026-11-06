@@ -1,60 +1,75 @@
 {% extends "bank/base.html" %}
 {% block title %}{{ subject.name }}{% endblock %}
 {% block content %}
-<p class="crumbs"><a href="{% url 'bank:home' %}">Subjects</a> › {{ subject.name }}</p>
-<h2 class="pagetitle">{{ subject.name }}</h2>
-{% if decks %}
-<section class="card exam-entry">
-  <div>
-    <p class="study-context">SELF-STUDY MODE</p>
-    <h3>Subject mock exam</h3>
-    <p class="mute">Choose chapters, set their shares, and apply one question-type mix across each chapter.</p>
-  </div>
-  <a class="btn pri" href="{% url 'bank:subject_exams' subject.slug %}">Set up an exam <span aria-hidden="true">→</span></a>
-</section>
-{% endif %}
-{% if sections %}
-  <div class="blocks section-blocks">
+<div class="inner-page">
+  <section class="page-hero">
+    {% include "bank/_hero_peaks.html" %}
+    <nav class="page-crumbs" aria-label="Breadcrumb"><a href="{% url 'bank:home' %}">Subjects</a><span aria-hidden="true">/</span><span>{{ subject.name }}</span></nav>
+    <h2 class="page-title">{{ subject.name }}</h2>
+    <div class="page-stats">
+      {% if sections %}<span><b>{{ sections|length }}</b> section{{ sections|length|pluralize }}</span>{% endif %}
+      <span><b>{{ decks|length }}</b> chapter{{ decks|length|pluralize }}</span>
+      <span><b>{{ total_questions|floatformat:"0g" }}</b> question{{ total_questions|pluralize }}</span>
+    </div>
+    {% if decks %}
+    <a class="page-hero-cta" href="{% url 'bank:subject_exams' subject.slug %}">Set up a mock exam <span aria-hidden="true">→</span></a>
+    {% endif %}
+  </section>
+
+  {% if sections %}
+  <div class="subject-cards">
     {% for section in sections %}
-    <a class="block section-block" href="{{ section.get_absolute_url }}">
-      <span class="block-index">{{ forloop.counter|stringformat:"02d" }}</span>
-      <div class="bname">{{ section.name }}</div>
-      <span class="section-block-count">{{ section.n_decks }} deck{{ section.n_decks|pluralize }}</span>
+    <a class="subject-card" href="{{ section.get_absolute_url }}" style="--i:{{ forloop.counter0 }}">
+      <span class="subject-index">{{ forloop.counter|stringformat:"02d" }}</span>
+      <span class="subject-mark" aria-hidden="true">{{ section.name|slice:":1" }}</span>
+      <span class="subject-name">{{ section.name }}</span>
+      <span class="subject-meta">{{ section.n_decks }} chapter{{ section.n_decks|pluralize }} · {{ section.n_q|floatformat:"0g" }} question{{ section.n_q|pluralize }}</span>
+      <span class="subject-go" aria-hidden="true">Open <span>→</span></span>
+      <svg class="subject-peaks" viewBox="0 0 300 60" preserveAspectRatio="none" aria-hidden="true"><path d="M0 60 L60 25 L95 42 L150 8 L205 40 L240 22 L300 50 L300 60Z"/></svg>
     </a>
     {% endfor %}
   </div>
   {% regroup unsectioned_decks by semester as sems %}
   {% for sem in sems %}
-    {% if forloop.first %}<h3 class="semband">Unassigned decks</h3>{% endif %}
-    {% ifchanged sem.grouper %}<h4 class="mute">Semester {{ sem.grouper }}</h4>{% endifchanged %}
-    <div class="grid decks">
-      {% for d in sem.list %}
-      <a class="set" href="{{ d.get_absolute_url }}">
-        <h3>{{ d.title }}</h3>
-        <p>{{ d.n }} question{{ d.n|pluralize }}</p>
-      </a>
-      {% endfor %}
-    </div>
+    {% if forloop.first %}<h3 class="section-title">Not in a section yet</h3>{% endif %}
+    <section class="sem-group">
+      <h3 class="sem-head"><span class="sem-badge">S{{ sem.grouper }}</span>Semester {{ sem.grouper }}<span class="sem-count">{{ sem.list|length }} chapter{{ sem.list|length|pluralize }}</span></h3>
+      <div class="chapter-tiles">
+        {% for d in sem.list %}
+        <a class="chapter-tile" href="{{ d.get_absolute_url }}" style="--i:{{ forloop.counter0 }}">
+          <span class="chapter-num">{{ forloop.counter|stringformat:"02d" }}</span>
+          <span class="chapter-name">{{ d.title }}</span>
+          <span class="chapter-meta">{{ d.n|floatformat:"0g" }} question{{ d.n|pluralize }}</span>
+          <span class="chapter-go" aria-hidden="true">→</span>
+        </a>
+        {% endfor %}
+      </div>
+    </section>
   {% empty %}
     {% if perms.bank.add_question %}
     <p class="mute section-import-link">Need to add a deck? <a href="{% url 'bank:import' %}?subject={{ subject.pk }}">Import questions</a> and assign it to a sub-subject.</p>
     {% endif %}
   {% endfor %}
-{% else %}
-{% regroup decks by semester as sems %}
-{% for sem in sems %}
-  <h3 class="semband">Semester {{ sem.grouper }}</h3>
-  <div class="grid decks">
-    {% for d in sem.list %}
-    <a class="set" href="{{ d.get_absolute_url }}">
-      <h3>{{ d.title }}</h3>
-      <p>{{ d.n }} question{{ d.n|pluralize }}</p>
-    </a>
-    {% endfor %}
-  </div>
-{% empty %}
+  {% else %}
+  {% regroup decks by semester as sems %}
+  {% for sem in sems %}
+  <section class="sem-group">
+    <h3 class="sem-head"><span class="sem-badge">S{{ sem.grouper }}</span>Semester {{ sem.grouper }}<span class="sem-count">{{ sem.list|length }} chapter{{ sem.list|length|pluralize }}</span></h3>
+    <div class="chapter-tiles">
+      {% for d in sem.list %}
+      <a class="chapter-tile" href="{{ d.get_absolute_url }}" style="--i:{{ forloop.counter0 }}">
+        <span class="chapter-num">{{ forloop.counter|stringformat:"02d" }}</span>
+        <span class="chapter-name">{{ d.title }}</span>
+        <span class="chapter-meta">{{ d.n|floatformat:"0g" }} question{{ d.n|pluralize }}</span>
+        <span class="chapter-go" aria-hidden="true">→</span>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% empty %}
   <div class="card">No decks in this subject yet.
     {% if perms.bank.add_question %}<a href="{% url 'bank:import' %}?subject={{ subject.pk }}">Import questions</a>{% endif %}</div>
-{% endfor %}
-{% endif %}
+  {% endfor %}
+  {% endif %}
+</div>
 {% endblock %}

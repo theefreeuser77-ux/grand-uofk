@@ -1,34 +1,48 @@
 {% extends "bank/base.html" %}
 {% block title %}{{ section.name }} · {{ subject.name }}{% endblock %}
 {% block content %}
-<p class="crumbs">
-  <a href="{% url 'bank:home' %}">Subjects</a> ›
-  <a href="{{ subject.get_absolute_url }}">{{ subject.name }}</a> ›
-  {{ section.name }}
-</p>
-<h2 class="pagetitle">{{ section.name }}</h2>
-{% regroup decks by semester as sems %}
-{% for sem in sems %}
-  <h3 class="semband">Semester {{ sem.grouper }}</h3>
-  <div class="grid decks">
-    {% for d in sem.list %}
-    <a class="set" href="{{ d.get_absolute_url }}">
-      <h3>{{ d.title }}</h3>
-      <p>{{ d.n }} question{{ d.n|pluralize }}</p>
-    </a>
-    {% endfor %}
-  </div>
-{% empty %}
+<div class="inner-page">
+  <section class="page-hero">
+    {% include "bank/_hero_peaks.html" %}
+    <nav class="page-crumbs" aria-label="Breadcrumb">
+      <a href="{% url 'bank:home' %}">Subjects</a><span aria-hidden="true">/</span>
+      <a href="{{ subject.get_absolute_url }}">{{ subject.name }}</a><span aria-hidden="true">/</span>
+      <span>{{ section.name }}</span>
+    </nav>
+    <h2 class="page-title">{{ section.name }}</h2>
+    <div class="page-stats">
+      <span><b>{{ decks|length }}</b> chapter{{ decks|length|pluralize }}</span>
+      <span><b>{{ total_questions|floatformat:"0g" }}</b> question{{ total_questions|pluralize }}</span>
+    </div>
+  </section>
+
+  {% regroup decks by semester as sems %}
+  {% for sem in sems %}
+  <section class="sem-group">
+    <h3 class="sem-head"><span class="sem-badge">S{{ sem.grouper }}</span>Semester {{ sem.grouper }}<span class="sem-count">{{ sem.list|length }} chapter{{ sem.list|length|pluralize }}</span></h3>
+    <div class="chapter-tiles">
+      {% for d in sem.list %}
+      <a class="chapter-tile" href="{{ d.get_absolute_url }}" style="--i:{{ forloop.counter0 }}">
+        <span class="chapter-num">{{ forloop.counter|stringformat:"02d" }}</span>
+        <span class="chapter-name">{{ d.title }}</span>
+        <span class="chapter-meta">{{ d.n|floatformat:"0g" }} question{{ d.n|pluralize }}</span>
+        <span class="chapter-go" aria-hidden="true">→</span>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% empty %}
   <div class="card">
     No decks in {{ section.name }} yet.
     {% if perms.bank.add_question %}
     <a href="{% url 'bank:import' %}?subject={{ subject.pk }}&amp;section={{ section.pk }}">Import questions</a>
     {% endif %}
   </div>
-{% endfor %}
-{% if decks and perms.bank.add_question %}
-<p class="mute section-import-link">
-  <a href="{% url 'bank:import' %}?subject={{ subject.pk }}&amp;section={{ section.pk }}">Add questions to {{ section.name }}</a>
-</p>
-{% endif %}
+  {% endfor %}
+  {% if decks and perms.bank.add_question %}
+  <p class="mute section-import-link">
+    <a href="{% url 'bank:import' %}?subject={{ subject.pk }}&amp;section={{ section.pk }}">Add questions to {{ section.name }}</a>
+  </p>
+  {% endif %}
+</div>
 {% endblock %}

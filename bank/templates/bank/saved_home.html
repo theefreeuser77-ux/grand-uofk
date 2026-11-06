@@ -1,15 +1,27 @@
 {% extends "bank/base.html" %}
 {% block title %}Saved questions{% endblock %}
 {% block content %}
-<h2 class="pagetitle">★ Saved questions</h2>
-<p class="mute">Questions you saved with the ★ button, filed by subject › semester › deck.</p>
-{% include "bank/saved_filter.html" %}
-<div class="blocks">
-  {% for s in subjects %}
-  <a class="block {% if not s.n_saved %}empty{% endif %}" href="{% url 'bank:saved_subject' s.slug %}{% if notes_only %}?notes=1{% endif %}">
-    <div class="bname">{{ s.name }}</div>
-    <div class="bmeta">{{ s.n_saved }} {% if notes_only %}question{{ s.n_saved|pluralize }} with notes{% else %}saved question{{ s.n_saved|pluralize }}{% endif %}</div>
-  </a>
-  {% endfor %}
+<div class="inner-page">
+  <section class="page-hero">
+    {% include "bank/_hero_peaks.html" %}
+    <p class="page-eyebrow">Your revision list</p>
+    <h2 class="page-title">Saved questions</h2>
+    <p class="page-lede">Questions you saved with the ★ button, filed by subject › semester › chapter.</p>
+    <div class="page-stats">
+      <span><b>{{ total_saved|floatformat:"0g" }}</b> {% if notes_only %}with notes{% else %}saved{% endif %}</span>
+    </div>
+  </section>
+  {% include "bank/saved_filter.html" %}
+  <div class="subject-cards">
+    {% for s in subjects %}
+    <a class="subject-card{% if not s.n_saved %} is-empty{% endif %}" href="{% url 'bank:saved_subject' s.slug %}{% if notes_only %}?notes=1{% endif %}" style="--i:{{ forloop.counter0 }}">
+      <span class="subject-mark" aria-hidden="true">{{ s.name|slice:":1" }}</span>
+      <span class="subject-name">{{ s.name }}</span>
+      <span class="subject-meta">{{ s.n_saved }} {% if notes_only %}question{{ s.n_saved|pluralize }} with notes{% else %}saved question{{ s.n_saved|pluralize }}{% endif %}</span>
+      <span class="subject-go" aria-hidden="true">Open <span>→</span></span>
+      <svg class="subject-peaks" viewBox="0 0 300 60" preserveAspectRatio="none" aria-hidden="true"><path d="M0 60 L60 25 L95 42 L150 8 L205 40 L240 22 L300 50 L300 60Z"/></svg>
+    </a>
+    {% endfor %}
+  </div>
 </div>
 {% endblock %}

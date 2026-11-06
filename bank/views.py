@@ -228,7 +228,7 @@ def subject_detail(request, slug):
         ),
     )
     return render(request, "bank/subject_detail.html", {
-        "subject": subject, "decks": decks,
+        "subject": subject, "decks": decks, "total_questions": sum(d.n for d in decks),
         "sections": sections, "unsectioned_decks": decks.filter(section__isnull=True),
     })
 
@@ -240,14 +240,16 @@ def section_detail(request, slug, section_slug):
     decks = section.decks.annotate(
         n=Count("questions", filter=Q(questions__is_in_sorting_bin=False, questions__is_in_review_bin=False))
     ).order_by("semester", "title")
+    total_questions = sum(d.n for d in decks)
     return render(request, "bank/section_detail.html", {
+        "total_questions": total_questions,
         "subject": subject, "section": section, "decks": decks,
     })
 
 
 @login_required
 def bank_detail(request, slug):
-    bank = get_object_or_404(QuestionBank.objects.select_related("subject"), slug=slug)
+    bank = get_object_or_404(QuestionBank.objects.select_related("subject", "section"), slug=slug)
     questions = bank.questions.filter(is_in_sorting_bin=False, is_in_review_bin=False)
     uofk_filter = _uofk_label_filter()
     standard_questions = questions.filter(is_lab=False)
@@ -2298,7 +2300,9 @@ def library_home(request):
             chapters__questions__is_in_sorting_bin=False, chapters__questions__is_in_review_bin=False,
         ), distinct=True),
     )
-    return render(request, "bank/library_home.html", {"books": books, "error": error},
+    books = list(books)
+    return render(request, "bank/library_home.html", {
+        "books": books, "error": error, "total_questions": sum(b.n_questions for b in books)},
                   status=400 if error else 200)
 
 
@@ -2323,7 +2327,9 @@ def book_detail(request, slug):
             messages.success(request, f"Added chapter {chapter.number}. {chapter.title}.")
             return redirect(book)
     chapters = book.chapters.annotate(n_questions=Count("questions", filter=LIVE_QUESTIONS))
-    return render(request, "bank/book_detail.html", {"book": book, "chapters": chapters, "error": error},
+    chapters = list(chapters)
+    return render(request, "bank/book_detail.html", {
+        "book": book, "chapters": chapters, "error": error, "total_questions": sum(c.n_questions for c in chapters)},
                   status=400 if error else 200)
 
 
@@ -2373,7 +2379,10 @@ def saved_home(request):
     subjects = Subject.objects.annotate(
         n_saved=Count("decks__questions__saved_by",
                       filter=_saved_question_filter(request.user, notes_only, "decks__questions__"), distinct=True))
-    return render(request, "bank/saved_home.html", {"subjects": subjects, "notes_only": notes_only})
+    subjects = list(subjects)
+    return render(request, "bank/saved_home.html", {
+        "subjects": subjects, "notes_only": notes_only, "total_saved": sum(s.n_saved for s in subjects),
+    })
 
 
 @login_required
@@ -2381,7 +2390,10 @@ def saved_subject(request, slug):
     notes_only = _notes_only(request)
     subject = get_object_or_404(Subject, slug=slug)
     decks = _saved_decks(request.user, notes_only).filter(subject=subject).order_by("semester", "title")
-    return render(request, "bank/saved_subject.html", {"subject": subject, "decks": decks, "notes_only": notes_only})
+    decks = list(decks)
+    return render(request, "bank/saved_subject.html", {
+        "subject": subject, "decks": decks, "notes_only": notes_only, "total_saved": sum(d.saved_n for d in decks),
+    })
 
 
 @login_required

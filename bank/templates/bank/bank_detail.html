@@ -2,32 +2,23 @@
 {% block title %}{{ bank.title }}{% endblock %}
 {% block content %}
 <main class="study-page">
-  <nav class="study-breadcrumbs" aria-label="Breadcrumb">
-    <a href="{% url 'bank:home' %}">Subjects</a>
-    {% if bank.subject %}<span aria-hidden="true">/</span><a href="{{ bank.subject.get_absolute_url }}">{{ bank.subject.name }}</a>{% endif %}
-    <span aria-hidden="true">/</span><span>Semester {{ bank.semester|stringformat:"02d" }}</span>
-  </nav>
-
-  <header class="study-heading">
-    <div class="study-heading-copy">
-      <p class="study-context"><span class="study-context-dot"></span>{{ bank.subject.name|default:"Rawasi 101" }}<span class="study-context-divider">/</span>Semester {{ bank.semester|stringformat:"02d" }}</p>
-      <h2>{{ bank.title }}</h2>
-      {% if bank.description %}<p class="study-description">{{ bank.description }}</p>{% endif %}
+  <section class="page-hero">
+    {% include "bank/_hero_peaks.html" %}
+    <nav class="page-crumbs" aria-label="Breadcrumb">
+      <a href="{% url 'bank:home' %}">Subjects</a>
+      {% if bank.subject %}<span aria-hidden="true">/</span><a href="{{ bank.subject.get_absolute_url }}">{{ bank.subject.name }}</a>{% endif %}
+      {% if bank.section %}<span aria-hidden="true">/</span><a href="{{ bank.section.get_absolute_url }}">{{ bank.section.name }}</a>{% endif %}
+      <span aria-hidden="true">/</span><span>Semester {{ bank.semester }}</span>
+    </nav>
+    <h2 class="page-title">{{ bank.title }}</h2>
+    {% if bank.description %}<p class="page-lede">{{ bank.description }}</p>{% endif %}
+    <div class="page-stats">
+      <span><b>{{ count|floatformat:"0g" }}</b> question{{ count|pluralize }}</span>
+      {% if mcq_tf_count %}<span><b>{{ mcq_tf_count|floatformat:"0g" }}</b> MCQ &amp; T/F</span>{% endif %}
+      {% if descriptive_count %}<span><b>{{ descriptive_count|floatformat:"0g" }}</b> descriptive</span>{% endif %}
+      {% if image_count %}<span><b>{{ image_count|floatformat:"0g" }}</b> image</span>{% endif %}
     </div>
-    <div class="study-edition" aria-label="Rawasi Batch 101">
-      <span>RAWASI</span>
-      <strong>101</strong>
-      <span>KHARTOUM MEDICINE</span>
-    </div>
-  </header>
-
-  <section class="card exam-entry">
-    <div>
-      <p class="study-context">SELF-STUDY MODE</p>
-      <h3>Mock exam</h3>
-      <p class="mute">Build a mixed exam for this deck. Answers stay hidden until you submit.</p>
-    </div>
-    <a class="btn pri" href="{% url 'bank:deck_exams' bank.slug %}">Set up an exam <span aria-hidden="true">→</span></a>
+    <a class="page-hero-cta" href="{% url 'bank:deck_exams' bank.slug %}">Set up a mock exam <span aria-hidden="true">→</span></a>
   </section>
 
   <section class="study-sessions" aria-labelledby="study-sessions-title">
