@@ -2026,7 +2026,7 @@ class SavedTests(Base):
 
         page = self.client.get(reverse("bank:saved_quiz", args=[deck.slug]))
         self.assertContains(page, 'data-question-type="saved"')
-        self.assertContains(page, "?v=20261104-2")
+        self.assertContains(page, "?v=20261106-1")
 
         practice = self.client.get(reverse("bank:api_saved_questions", args=[deck.slug])).json()["questions"]
         self.assertEqual([item["id"] for item in practice], [question.pk])
@@ -2996,7 +2996,7 @@ class ImageProcessingTests(Base):
                             "not a PDF", status_code=400)
         self.client.force_login(self.student)
         self.assertEqual(self.client.get(reverse("bank:image_processing")).status_code, 403)
-        self.assertNotContains(self.client.get(reverse("bank:home")), "Image processing")
+        self.assertNotContains(self.client.get(reverse("bank:home")), reverse("bank:image_processing"))
 
 
 class ResumeActivityTests(Base):

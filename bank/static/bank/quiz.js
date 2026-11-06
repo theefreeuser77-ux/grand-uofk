@@ -374,12 +374,12 @@
       const chatUrl = new URL(ai.url);
       chatUrl.searchParams.set("q", prompt);
       if (!q.image_url) {
-        return `<a class="btn" href="${esc(chatUrl.href)}" target="_blank" rel="noopener noreferrer">اتونس 😁 ↗</a>`;
+        return `<a class="btn" href="${esc(chatUrl.href)}" target="_blank" rel="noopener noreferrer">AI ↗</a>`;
       }
-      return `<a class="btn" href="${esc(chatUrl.href)}" target="_blank" rel="noopener noreferrer" data-ai-link${image}>اتونس 😁 ↗</a>
+      return `<a class="btn" href="${esc(chatUrl.href)}" target="_blank" rel="noopener noreferrer" data-ai-link${image}>AI ↗</a>
         <p class="mute image-chatgpt-hint" data-copy-status>The image is copied when you open ChatGPT: paste it there with Ctrl+V (or long-press → Paste).</p>`;
     }
-    return `<a class="btn" href="${esc(ai.url)}" target="_blank" rel="noopener noreferrer" data-ai-link data-ai-name="${esc(ai.name)}" data-copy-prompt="${esc(prompt)}"${image}>اتونس 😁 ↗</a>
+    return `<a class="btn" href="${esc(ai.url)}" target="_blank" rel="noopener noreferrer" data-ai-link data-ai-name="${esc(ai.name)}" data-copy-prompt="${esc(prompt)}"${image}>AI ↗</a>
       <p class="mute image-chatgpt-hint" data-copy-status>The question is copied when you open ${esc(ai.name)}: paste it there with Ctrl+V (or long-press → Paste).${q.image_url ? " Then come back here for the image." : ""}</p>`;
   }
 
