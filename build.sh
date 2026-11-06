@@ -4,6 +4,7 @@ set -o errexit
 pip install -r requirements.txt
 python manage.py collectstatic --noinput
 python manage.py migrate
+python manage.py createcachetable
 
 # Free Render plans have no Shell. To create the first admin account, set
 # DJANGO_SUPERUSER_USERNAME and DJANGO_SUPERUSER_PASSWORD in the service's environment.

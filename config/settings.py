@@ -67,6 +67,18 @@ if DATABASE_URL:
 else:
     DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / "db.sqlite3"}}
 
+# Cache in the database so every app process sees the same entries. The
+# one-login-per-account rule stores each user's active session here, so a
+# per-process memory cache would let several processes disagree.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+        "LOCATION": "django_cache",
+        # One entry per logged-in user; keep culling far away from that.
+        "OPTIONS": {"MAX_ENTRIES": 100000},
+    },
+}
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
 ]
