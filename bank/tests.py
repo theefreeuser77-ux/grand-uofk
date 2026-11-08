@@ -583,8 +583,7 @@ class ReviewWorkflowTests(Base):
         self.assertContains(page, 'id="study-label-filter"')
         self.assertContains(page, "U of K only (1)")
         self.assertContains(page, "Other questions (3)")
-        self.assertContains(page, 'data-count-uofk="1"')
-        self.assertContains(page, 'data-count-other="2"')
+        self.assertContains(page, 'data-counts="{&quot;all&quot;: 4, &quot;uofk&quot;: 1, &quot;other&quot;: 3}"')
 
         selected = self.client.get(deck.get_absolute_url(), {"label": "uofk"})
         self.assertContains(selected, '<option value="uofk" selected>')
@@ -1021,10 +1020,10 @@ class BrowseAndImportTests(Base):
         self.assertContains(page, "Choose a question type")
         self.assertContains(page, "MCQs &amp; True / False")
         self.assertContains(page, "value=\"mcq_tf\"")
-        self.assertContains(page, '<strong data-count-all="2" data-count-uofk="0" data-count-other="2">2</strong> questions')
+        self.assertContains(page, '<strong data-counts="{&quot;all&quot;: 2, &quot;uofk&quot;: 0, &quot;other&quot;: 2}">2</strong> questions')
         self.assertContains(page, "Descriptive")
         self.assertContains(page, "value=\"descriptive\"")
-        self.assertContains(page, '<strong data-count-all="1" data-count-uofk="0" data-count-other="1">1</strong> questions')
+        self.assertContains(page, '<strong data-counts="{&quot;all&quot;: 1, &quot;uofk&quot;: 0, &quot;other&quot;: 1}">1</strong> questions')
         self.assertContains(page, "Shuffle question order")
 
     def test_labs_count_is_separate_from_regular_question_type_counts(self):
@@ -1036,11 +1035,11 @@ class BrowseAndImportTests(Base):
         page = self.client.get(deck.get_absolute_url())
         self.assertContains(
             page,
-            '<strong data-count-all="2" data-count-uofk="0" data-count-other="2">2</strong> questions',
+            '<strong data-counts="{&quot;all&quot;: 2, &quot;uofk&quot;: 0, &quot;other&quot;: 2}">2</strong> questions',
         )
         self.assertContains(
             page,
-            '<strong data-count-all="1" data-count-uofk="0" data-count-other="1">1</strong> questions',
+            '<strong data-counts="{&quot;all&quot;: 1, &quot;uofk&quot;: 0, &quot;other&quot;: 1}">1</strong> questions',
         )
 
 
@@ -3119,3 +3118,99 @@ class LibraryTests(Base):
         self.assertEqual(r.status_code, 302)
         q.refresh_from_db()
         self.assertEqual((q.book_chapter_id, q.label), (abdomen.pk, "Gray's Review"))
+
+
+class QuestionSourceTests(Base):
+    """Admins filter by every university; everyone else only sees U of K and Other."""
+
+    def setUp(self):
+        super().setUp()
+        self.admin = User.objects.create_user("admin", password="pw", is_staff=True)
+        self.deck = self.import_sample()
+        self.deck.questions.update(label="U of K")
+        make = lambda stem, label="": Question.objects.create(
+            bank=self.deck, kind=Question.DESC, stem=stem, answer="Answer.", label=label)
+        self.red_sea = make("Second source question.", "Red_Sea")
+        self.gezira = make("Third source question.", "Gezira")
+        self.unlabelled = make("Unlabelled question.")
+        self.url = reverse("bank:api_questions", args=[self.deck.slug])
+
+    def ids(self, label, kind="descriptive"):
+        return {q["id"] for q in self.client.get(self.url, {"type": kind, "label": label}).json()["questions"]}
+
+    def test_admin_source_menu_lists_universities_present_and_additional(self):
+        self.client.force_login(self.admin)
+        page = self.client.get(self.deck.get_absolute_url())
+        for text in ("All questions (5)", "U of K (2)", "Gezira (1)", "Red Sea (1)", "Additional (1)"):
+            self.assertContains(page, text)
+        self.assertNotContains(page, "Neelain")  # no Neelain questions in this chapter
+        self.assertNotContains(page, "Other questions")
+
+    def test_student_source_menu_keeps_u_of_k_and_other_only(self):
+        self.client.force_login(self.student)
+        page = self.client.get(self.deck.get_absolute_url())
+        self.assertContains(page, "U of K only (2)")
+        self.assertContains(page, "Other questions (3)")
+        for hidden in ("Gezira", "Red Sea", "Additional"):
+            self.assertNotContains(page, hidden)
+
+    def test_admin_filters_by_university_and_additional(self):
+        self.client.force_login(self.admin)
+        self.assertEqual(self.ids("red_sea"), {self.red_sea.pk})
+        self.assertEqual(self.ids("gezira"), {self.gezira.pk})
+        self.assertEqual(self.ids("additional"), {self.unlabelled.pk})
+        self.assertEqual(self.ids("other"), {self.red_sea.pk, self.gezira.pk, self.unlabelled.pk})
+
+    def test_student_cannot_filter_by_a_university(self):
+        self.client.force_login(self.student)
+        self.assertEqual(self.ids("red_sea"), self.ids("all"))
+        self.assertEqual(self.ids("other"), {self.red_sea.pk, self.gezira.pk, self.unlabelled.pk})
+
+    def test_students_never_receive_other_universities_labels(self):
+        self.client.force_login(self.student)
+        labels = {q["id"]: q["label"] for q in self.client.get(self.url, {"type": "descriptive"}).json()["questions"]}
+        self.assertEqual(labels[self.red_sea.pk], "")
+        self.assertEqual(labels[self.gezira.pk], "")
+        exported = self.client.get(reverse("bank:export", args=[self.deck.slug])).content.decode()
+        self.assertNotIn("Red_Sea", exported)
+        self.assertNotIn("Gezira", exported)
+        self.assertIn("LABEL: U of K", exported)
+
+    def test_admins_receive_the_stored_label(self):
+        self.client.force_login(self.admin)
+        labels = {q["id"]: q["label"] for q in self.client.get(self.url, {"type": "descriptive"}).json()["questions"]}
+        self.assertEqual(labels[self.red_sea.pk], "Red_Sea")
+
+    def test_library_questions_keep_their_book_label_for_students(self):
+        book = Book.objects.create(title="Gray's Review")
+        chapter = BookChapter.objects.create(book=book, number=1, title="Thorax")
+        question = Question.objects.create(bank=self.deck, kind=Question.DESC, stem="Book question.",
+                                           answer="Answer.", label="Gray's Review", book_chapter=chapter)
+        self.client.force_login(self.student)
+        data = self.client.get(reverse("bank:api_book_chapter_questions", args=[chapter.pk])).json()
+        self.assertEqual({q["id"]: q["label"] for q in data["questions"]}[question.pk], "Gray's Review")
+
+
+class LabelExistingUofKMigrationTests(Base):
+    def run_migration(self):
+        from importlib import import_module
+        from django.apps import apps as django_apps
+        import_module("bank.migrations.0024_label_existing_uofk_questions").label_existing_questions(django_apps, None)
+
+    def test_labels_physiology_and_biochemistry_but_not_anatomy_or_universities(self):
+        physiology = self.import_sample(title="Cardio")  # self.subject is Physiology
+        biochemistry = QuestionBank.objects.create(title="Enzymes", subject=Subject.objects.create(name="Biochemistry"))
+        anatomy = QuestionBank.objects.create(title="Thorax", subject=Subject.objects.create(name="Anatomy"))
+        make = lambda bank, label="": Question.objects.create(
+            bank=bank, kind=Question.DESC, stem=f"{bank.title} {label}", answer="A.", label=label)
+        bio_blank, bio_lab, bio_red_sea = make(biochemistry), make(biochemistry, "LAB"), make(biochemistry, "Red_Sea")
+        anatomy_blank = make(anatomy)
+        self.run_migration()
+        self.assertTrue(all(q.label == "U of K" for q in physiology.questions.all()))
+        for question in (bio_blank, bio_lab):
+            question.refresh_from_db()
+            self.assertEqual(question.label, "U of K")
+        bio_red_sea.refresh_from_db()
+        anatomy_blank.refresh_from_db()
+        self.assertEqual(bio_red_sea.label, "Red_Sea")
+        self.assertEqual(anatomy_blank.label, "")

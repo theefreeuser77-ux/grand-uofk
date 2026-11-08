@@ -25,7 +25,7 @@ from django.utils.http import url_has_allowed_host_and_scheme, urlencode
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_http_methods, require_POST
 
-from . import parser, services
+from . import parser, services, sources
 from . import ai_marking, figures
 from .forms import (
     ExamTemplateForm, ImageQuestionForm, ImageUploadForm, QuestionForm, label_for_book, option_formset,
@@ -44,22 +44,6 @@ from .subject_backup import BackupError, restore_backup
 
 
 # ---------------------------------------------------------------- helpers
-def _uofk_label_filter():
-    return Q(label__iexact="U of K") | Q(label__iexact="UofK")
-
-
-def _normalize_label_filter(value):
-    return value if value in {"all", "uofk", "other"} else "all"
-
-
-def _filter_by_label(queryset, label_filter):
-    if label_filter == "uofk":
-        return queryset.filter(_uofk_label_filter())
-    if label_filter == "other":
-        return queryset.exclude(_uofk_label_filter())
-    return queryset
-
-
 def perm_required(perm):
     """Anonymous -> login page; logged in without the permission -> 403."""
     def deco(view):
@@ -128,7 +112,8 @@ def serialize(questions, user, review=False, include_answers=False):
             else q.kind
         )
         question = {
-            "id": q.id, "number": q.number or str(len(data) + 1), "label": q.label, "kind": kind,
+            "id": q.id, "number": q.number or str(len(data) + 1),
+            "label": sources.visible_label(q.label, user, from_book=q.book_chapter_id is not None), "kind": kind,
             "stem": q.stem, "saved": q.id in saved, "my_note": notes.get(q.id, ""), "is_lab": q.is_lab,
             "image_answer_mode": q.image_answer_mode if q.kind == Question.IMAGE else None,
             "multi": kind == Question.MCQ and sum(o.is_correct for o in opts) > 1,
@@ -275,67 +260,40 @@ def section_detail(request, slug, section_slug):
 def bank_detail(request, slug):
     bank = get_object_or_404(QuestionBank.objects.select_related("subject", "section"), slug=slug)
     questions = bank.questions.filter(is_in_sorting_bin=False, is_in_review_bin=False, book_chapter__isnull=True)
-    uofk_filter = _uofk_label_filter()
-    standard_questions = questions.filter(is_lab=False)
-    counts = questions.aggregate(
-        count=Count("id"),
-        uofk_count=Count("id", filter=uofk_filter),
-    )
-    standard_counts = standard_questions.aggregate(
-        mcq_tf_count=Count("id", filter=Q(kind__in=[Question.MCQ, Question.TF])),
-        descriptive_count=Count("id", filter=Q(kind=Question.DESC)),
-        image_count=Count(
-            "id",
-            filter=Q(kind=Question.IMAGE, image_answer_mode__in=[
-                choice[0] for choice in Question.IMAGE_ANSWER_CHOICES
-            ]),
-        ),
-        uofk_mcq_tf_count=Count(
-            "id",
-            filter=Q(kind__in=[Question.MCQ, Question.TF]) & uofk_filter,
-        ),
-        uofk_descriptive_count=Count(
-            "id", filter=Q(kind=Question.DESC) & uofk_filter,
-        ),
-        uofk_image_count=Count(
-            "id",
-            filter=Q(kind=Question.IMAGE, image_answer_mode__in=[
-                choice[0] for choice in Question.IMAGE_ANSWER_CHOICES
-            ]) & uofk_filter,
-        ),
-    )
-    lab_counts = questions.filter(is_lab=True).aggregate(
-        lab_count=Count("id"),
-        uofk_lab_count=Count("id", filter=uofk_filter),
-    )
-    mcq_tf_count = standard_counts["mcq_tf_count"]
-    descriptive_count = standard_counts["descriptive_count"]
-    image_count = standard_counts["image_count"]
-    uofk_mcq_tf_count = standard_counts["uofk_mcq_tf_count"]
-    uofk_descriptive_count = standard_counts["uofk_descriptive_count"]
-    uofk_image_count = standard_counts["uofk_image_count"]
-    total_count = counts["count"]
-    uofk_total_count = counts["uofk_count"]
-    lab_count = lab_counts["lab_count"]
-    uofk_lab_count = lab_counts["uofk_lab_count"]
+    type_filters = {
+        "total": Q(),
+        "mcq_tf": Q(is_lab=False, kind__in=[Question.MCQ, Question.TF]),
+        "descriptive": Q(is_lab=False, kind=Question.DESC),
+        "image": Q(is_lab=False, kind=Question.IMAGE, image_answer_mode__in=[
+            choice[0] for choice in Question.IMAGE_ANSWER_CHOICES
+        ]),
+        "labs": Q(is_lab=True),
+    }
+    keys = sources.filters_for(request.user)
+    aggregates = {}
+    for type_key, type_q in type_filters.items():
+        for key in keys:
+            condition = type_q & sources.filter_q(key)
+            aggregates[f"{type_key}_in_{key}"] = Count("id", filter=condition) if condition else Count("id")
+    totals = questions.aggregate(**aggregates)
+    counts = {type_key: {key: totals[f"{type_key}_in_{key}"] for key in keys} for type_key in type_filters}
+    selected = sources.normalize(request.GET.get("label", sources.ALL), request.user)
+    source_options = [
+        {"key": key, "name": sources.filter_name(key, request.user), "count": counts["total"][key]}
+        for key in keys
+        # Admins only see sources this chapter has; students always get the same three choices.
+        if not request.user.is_staff or key in (sources.ALL, selected) or counts["total"][key]
+    ]
     return render(request, "bank/bank_detail.html", {
         "bank": bank,
-        "count": total_count,
-        "mcq_tf_count": mcq_tf_count,
-        "descriptive_count": descriptive_count,
-        "image_count": image_count,
-        "uofk_count": uofk_total_count,
-        "other_count": total_count - uofk_total_count,
-        "uofk_mcq_tf_count": uofk_mcq_tf_count,
-        "uofk_descriptive_count": uofk_descriptive_count,
-        "uofk_image_count": uofk_image_count,
-        "other_mcq_tf_count": mcq_tf_count - uofk_mcq_tf_count,
-        "other_descriptive_count": descriptive_count - uofk_descriptive_count,
-        "other_image_count": image_count - uofk_image_count,
-        "lab_count": lab_count,
-        "uofk_lab_count": uofk_lab_count,
-        "other_lab_count": lab_count - uofk_lab_count,
-        "selected_label_filter": _normalize_label_filter(request.GET.get("label", "all")),
+        "count": counts["total"][sources.ALL],
+        "mcq_tf_count": counts["mcq_tf"][sources.ALL],
+        "descriptive_count": counts["descriptive"][sources.ALL],
+        "image_count": counts["image"][sources.ALL],
+        "lab_count": counts["labs"][sources.ALL],
+        "count_json": {type_key: json.dumps(value) for type_key, value in counts.items()},
+        "source_options": source_options,
+        "selected_label_filter": selected,
     })
 
 
@@ -1398,7 +1356,7 @@ def quiz(request, slug):
     quiz_type = request.GET.get("type", "mcq_tf")
     if quiz_type not in {"mcq_tf", "descriptive", "image", "labs"}:
         quiz_type = "mcq_tf"
-    label_filter = _normalize_label_filter(request.GET.get("label", "all"))
+    label_filter = sources.normalize(request.GET.get("label", sources.ALL), request.user)
     query = f"type={quiz_type}"
     if label_filter != "all":
         query += f"&label={label_filter}"
@@ -1457,7 +1415,10 @@ def saved_quiz(request, slug):
 @login_required
 def export_bank(request, slug):
     bank = get_object_or_404(QuestionBank.objects.select_related("subject", "section"), slug=slug)
-    text = parser.to_text(bank.title, services.bank_as_dicts(bank),
+    rows = services.bank_as_dicts(bank)
+    if not request.user.is_staff:  # keep other universities' names private to admins
+        rows = ({**row, "label": sources.visible_label(row["label"], request.user)} for row in rows)
+    text = parser.to_text(bank.title, rows,
                           subject=bank.subject.name if bank.subject else None, semester=bank.semester,
                           section=bank.section.name if bank.section else None)
     if bank.questions.filter(is_in_sorting_bin=False, is_in_review_bin=False, book_chapter__isnull=True,
@@ -1613,7 +1574,7 @@ def api_questions(request, slug):
     if review and not request.user.is_staff:
         return HttpResponseForbidden("Staff access is required.")
     qs = bank.questions.filter(is_in_sorting_bin=False, is_in_review_bin=False, book_chapter__isnull=True)
-    qs = _filter_by_label(qs, _normalize_label_filter(request.GET.get("label", "all")))
+    qs = sources.apply(qs, sources.normalize(request.GET.get("label", sources.ALL), request.user))
     quiz_type = request.GET.get("type")
     if quiz_type == "descriptive":
         qs = qs.filter(kind=Question.DESC, is_lab=False)

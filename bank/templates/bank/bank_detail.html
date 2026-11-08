@@ -21,16 +21,16 @@
         <p>QUESTION TYPES</p>
         <h2 id="study-sessions-title">Choose a question type</h2>
       </div>
-      <span class="study-total" data-total-all="{{ count }}" data-total-uofk="{{ uofk_count }}" data-total-other="{{ other_count }}">{{ count }} questions in this deck</span>
+      <span class="study-total" data-counts="{{ count_json.total }}">{{ count }} questions in this deck</span>
     </div>
 
     <form method="get" action="{% url 'bank:quiz' bank.slug %}" class="study-form" id="study-form">
       <label class="study-label-filter" for="study-label-filter">
         <span>QUESTION SOURCE</span>
         <select id="study-label-filter" name="label">
-          <option value="all" {% if selected_label_filter == "all" %}selected{% endif %}>All questions ({{ count }})</option>
-          <option value="uofk" {% if selected_label_filter == "uofk" %}selected{% endif %}>U of K only ({{ uofk_count }})</option>
-          <option value="other" {% if selected_label_filter == "other" %}selected{% endif %}>Other questions ({{ other_count }})</option>
+          {% for option in source_options %}
+          <option value="{{ option.key }}" {% if selected_label_filter == option.key %}selected{% endif %}>{{ option.name }} ({{ option.count }})</option>
+          {% endfor %}
         </select>
         <small>Choose which sources to include before starting.</small>
       </label>
@@ -42,13 +42,13 @@
       </div>
       <div class="type-cards">
         <article class="type-card type-mcq{% if not mcq_tf_count %} is-empty{% endif %}" style="--i:0">
-          {% if mcq_tf_count %}<a class="type-card-link" data-count-all="{{ mcq_tf_count }}" data-count-uofk="{{ uofk_mcq_tf_count }}" data-count-other="{{ other_mcq_tf_count }}" href="{% url 'bank:quiz' bank.slug %}?type=mcq_tf" aria-label="Start MCQs and True / False quiz"></a>{% endif %}
+          {% if mcq_tf_count %}<a class="type-card-link" data-counts="{{ count_json.mcq_tf }}" href="{% url 'bank:quiz' bank.slug %}?type=mcq_tf" aria-label="Start MCQs and True / False quiz"></a>{% endif %}
           <div class="type-card-head">
             <span class="type-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6h2v2H4zM9 6h11v2H9zM4 11h2v2H4zM9 11h11v2H9zM4 16h2v2H4zM9 16h11v2H9z"/></svg></span>
             <div><h3>MCQs &amp; True / False</h3><p>Multiple-choice and true-or-false questions.</p></div>
           </div>
           <div class="type-card-foot">
-            <span class="type-count"><strong data-count-all="{{ mcq_tf_count }}" data-count-uofk="{{ uofk_mcq_tf_count }}" data-count-other="{{ other_mcq_tf_count }}">{{ mcq_tf_count }}</strong> questions</span>
+            <span class="type-count"><strong data-counts="{{ count_json.mcq_tf }}">{{ mcq_tf_count }}</strong> questions</span>
             <span class="type-start">{% if mcq_tf_count %}Start <span aria-hidden="true">→</span>{% else %}No questions yet{% endif %}</span>
           </div>
           {% if perms.bank.add_question or user.is_staff %}
@@ -60,13 +60,13 @@
         </article>
 
         <article class="type-card type-desc{% if not descriptive_count %} is-empty{% endif %}" style="--i:1">
-          {% if descriptive_count %}<a class="type-card-link" data-count-all="{{ descriptive_count }}" data-count-uofk="{{ uofk_descriptive_count }}" data-count-other="{{ other_descriptive_count }}" href="{% url 'bank:quiz' bank.slug %}?type=descriptive" aria-label="Start Descriptive quiz"></a>{% endif %}
+          {% if descriptive_count %}<a class="type-card-link" data-counts="{{ count_json.descriptive }}" href="{% url 'bank:quiz' bank.slug %}?type=descriptive" aria-label="Start Descriptive quiz"></a>{% endif %}
           <div class="type-card-head">
             <span class="type-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 3h14v18H5zm2 2v14h10V5zm2 2h6v2H9zm0 4h6v2H9zm0 4h4v2H9z"/></svg></span>
             <div><h3>Descriptive</h3><p>Written answers and flashcards.</p></div>
           </div>
           <div class="type-card-foot">
-            <span class="type-count"><strong data-count-all="{{ descriptive_count }}" data-count-uofk="{{ uofk_descriptive_count }}" data-count-other="{{ other_descriptive_count }}">{{ descriptive_count }}</strong> questions</span>
+            <span class="type-count"><strong data-counts="{{ count_json.descriptive }}">{{ descriptive_count }}</strong> questions</span>
             <span class="type-start">{% if descriptive_count %}Start <span aria-hidden="true">→</span>{% else %}No questions yet{% endif %}</span>
           </div>
           {% if perms.bank.add_question or user.is_staff %}
@@ -78,13 +78,13 @@
         </article>
 
         <article class="type-card type-image{% if not image_count %} is-empty{% endif %}" style="--i:2">
-          {% if image_count %}<a class="type-card-link" data-count-all="{{ image_count }}" data-count-uofk="{{ uofk_image_count }}" data-count-other="{{ other_image_count }}" href="{% url 'bank:quiz' bank.slug %}?type=image" aria-label="Start all image questions"></a>{% endif %}
+          {% if image_count %}<a class="type-card-link" data-counts="{{ count_json.image }}" href="{% url 'bank:quiz' bank.slug %}?type=image" aria-label="Start all image questions"></a>{% endif %}
           <div class="type-card-head">
             <span class="type-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 5h18v14H3zm2 2v8.6l4-4 3 3 2.5-2.5L19 16.6V7zm9.5 1.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z"/></svg></span>
             <div><h3>Identify</h3><p>Labelled images and image-based MCQs.</p></div>
           </div>
           <div class="type-card-foot">
-            <span class="type-count"><strong data-count-all="{{ image_count }}" data-count-uofk="{{ uofk_image_count }}" data-count-other="{{ other_image_count }}">{{ image_count }}</strong> image questions</span>
+            <span class="type-count"><strong data-counts="{{ count_json.image }}">{{ image_count }}</strong> image questions</span>
             <span class="type-start">{% if image_count %}Start <span aria-hidden="true">→</span>{% else %}No questions yet{% endif %}</span>
           </div>
           {% if perms.bank.add_question or user.is_staff %}
@@ -96,13 +96,13 @@
         </article>
 
         <article class="type-card type-labs{% if not lab_count %} is-empty{% endif %}" style="--i:3">
-          {% if lab_count %}<a class="type-card-link" data-count-all="{{ lab_count }}" data-count-uofk="{{ uofk_lab_count }}" data-count-other="{{ other_lab_count }}" href="{% url 'bank:quiz' bank.slug %}?type=labs" aria-label="Start Labs mixed-format quiz"></a>{% endif %}
+          {% if lab_count %}<a class="type-card-link" data-counts="{{ count_json.labs }}" href="{% url 'bank:quiz' bank.slug %}?type=labs" aria-label="Start Labs mixed-format quiz"></a>{% endif %}
           <div class="type-card-head">
             <span class="type-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 3h6v2h-1v4.6l5.4 8.3A2 2 0 0 1 17.7 21H6.3a2 2 0 0 1-1.7-3.1L10 9.6V5H9zm3 8.4L8.6 16h6.8z"/></svg></span>
             <div><h3>Labs</h3><p>Mixed practice of every question type.</p></div>
           </div>
           <div class="type-card-foot">
-            <span class="type-count"><strong data-count-all="{{ lab_count }}" data-count-uofk="{{ uofk_lab_count }}" data-count-other="{{ other_lab_count }}">{{ lab_count }}</strong> questions</span>
+            <span class="type-count"><strong data-counts="{{ count_json.labs }}">{{ lab_count }}</strong> questions</span>
             <span class="type-start">{% if lab_count %}Start <span aria-hidden="true">→</span>{% else %}No questions yet{% endif %}</span>
           </div>
           {% if perms.bank.add_question or user.is_staff %}
@@ -133,18 +133,20 @@
   const shuffle = document.querySelector('#study-form [name="shuffle"]');
   if (!source || !shuffle) return;
   const total = document.querySelector(".study-total");
-  const key = mode => mode === "all" ? "All" : mode === "uofk" ? "Uofk" : "Other";
+  const countFor = (element, mode) => {
+    try { return Number(JSON.parse(element.dataset.counts || "{}")[mode] || 0); } catch (error) { return 0; }
+  };
   function updateOptions() {
     const mode = source.value;
-    total.textContent = `${Number(total.dataset[`total${key(mode)}`] || 0)} questions in this deck`;
-    document.querySelectorAll(".type-count [data-count-all]").forEach(count => {
-      count.textContent = count.dataset[`count${key(mode)}`] || "0";
+    total.textContent = `${countFor(total, mode)} questions in this deck`;
+    document.querySelectorAll(".type-count [data-counts]").forEach(count => {
+      count.textContent = countFor(count, mode);
     });
     document.querySelectorAll(".type-card").forEach(card => {
       const link = card.querySelector(".type-card-link");
       const label = card.querySelector(".type-start");
       if (!link) return;
-      const available = Number(link.dataset[`count${key(mode)}`] || 0) > 0;
+      const available = countFor(link, mode) > 0;
       const target = new URL(link.href, location.href);
       if (mode === "all") target.searchParams.delete("label");
       else target.searchParams.set("label", mode);
