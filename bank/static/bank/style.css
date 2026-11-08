@@ -3963,3 +3963,11 @@ button,.btn{border-radius:5px}
 @media (min-width:700px){.type-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (hover:none){.type-card:not(.is-empty):active{transform:scale(.98);border-color:var(--accent)}}
 @media (prefers-reduced-motion:reduce){.type-card{animation:none!important;transition:none}}
+
+/* Drag-and-drop on file pickers (drop-files.js) */
+.drop-zone{transition:background-color .15s,outline-color .15s}
+.drop-active{outline:2px dashed var(--acc);outline-offset:3px;background:var(--acc-soft)}
+tr.drop-active>td{background:var(--acc-soft)}
+.drop-done{outline:2px solid var(--ok);outline-offset:3px}
+.drop-rejected{outline:2px dashed var(--bad);outline-offset:3px}
+@media (prefers-reduced-motion:reduce){.drop-zone{transition:none}}

@@ -60,9 +60,14 @@
     <label><input type="checkbox" name="import_to_labs" value="1" {% if import_to_labs %}checked{% endif %}>
       Import these questions to Labs <span class="mute">(otherwise they go to the regular question-type tabs)</span></label>
   </p>
-  <p><textarea name="text" rows="16" placeholder="Q: …&#10;A. …&#10;B. …&#10;ANSWER: B">{{ text }}</textarea></p>
+  <div class="import-text-drop" data-drop-target>
+    <textarea name="text" rows="16" placeholder="Paste questions here, or drop a .txt file on this box.&#10;&#10;Q: …&#10;A. …&#10;B. …&#10;ANSWER: B">{{ text }}</textarea>
+    <p class="row" style="justify-content:flex-start;margin:6px 0 0">
+      <label>or choose a .txt file <input type="file" name="file" accept=".txt,text/plain" data-text-file></label>
+      <span class="mute" data-text-status aria-live="polite"></span>
+    </p>
+  </div>
   <p class="row" style="justify-content:flex-start">
-    <label>or upload .txt <input type="file" name="file" accept=".txt,text/plain"></label>
     <label><input type="checkbox" name="skip_dupes" value="1" {% if skip_dupes %}checked{% endif %}> Skip duplicates</label>
   </p>
   <p class="row" style="justify-content:flex-start">
@@ -94,8 +99,8 @@
   {% if not rows %}<div class="fb error">No “Q:” lines found — is the text in the expected format?</div>{% endif %}
   {% if rows %}
     {% if image_uploads_enabled %}
-    <div class="import-images">
-      <label class="btn import-file">📷 <span data-bulk-label>Choose images for many questions</span>
+    <div class="import-images" data-drop-target>
+      <label class="btn import-file">📷 <span data-bulk-label>Choose or drop images for many questions</span>
         <input type="file" name="images" accept="image/*" multiple form="import-form" data-bulk-images></label>
       <p class="mute">Images named after a question number (<code>17.jpg</code>) attach to that question automatically. Or tap <b>Add image</b> on a question. Questions with an image are never skipped as duplicates.</p>
       <ul class="msgs" data-image-problems></ul>
@@ -108,13 +113,13 @@
   <table>
     <tr><th>#</th><th>Question</th><th>Type</th><th>Answer</th><th>Status</th></tr>
     {% for r in rows %}
-    <tr class="{% if not r.q.ok %}bad{% elif r.skipped %}skip{% endif %}" data-ok="{% if r.q.ok %}1{% endif %}" data-skipped="{% if r.skipped %}1{% endif %}" data-key="{{ r.image_key }}">
+    <tr class="{% if not r.q.ok %}bad{% elif r.skipped %}skip{% endif %}" data-drop-target data-ok="{% if r.q.ok %}1{% endif %}" data-skipped="{% if r.skipped %}1{% endif %}" data-key="{{ r.image_key }}">
       <td>{{ r.q.number|default:"–" }}</td>
       <td>{{ r.q.stem|truncatechars:110 }}<div class="mute">{{ r.q.options|length }} option{{ r.q.options|length|pluralize }}</div>
         {% if image_uploads_enabled and r.q.ok %}
         <div class="import-row-image" data-row-image data-key="{{ r.image_key }}" data-named="{{ r.q.image }}">
           <img alt="Image for this question" hidden>
-          <label class="btn import-file">📷 <span>Add image</span>
+          <label class="btn import-file">📷 <span>Add or drop image</span>
             <input type="file" name="image_{{ forloop.counter0 }}" accept="image/*" form="import-form"></label>
           <span class="mute" data-image-status>{% if r.q.image %}Needs {{ r.q.image }}{% endif %}</span>
         </div>
@@ -142,6 +147,55 @@
 {% endblock %}
 {% block scripts %}
 <script>
+// A chosen or dropped .txt file loads into the text box, so the box is always what gets imported.
+// SUBJECT / SECTION / SEMESTER / DECK lines at the top of the file also fill in the form.
+(() => {
+  const picker = document.querySelector('[data-text-file]');
+  const area = document.querySelector('#import-form textarea[name=text]');
+  const status = document.querySelector('[data-text-status]');
+  if (!picker || !area) return;
+  const choose = (select, wanted, byValue) => {
+    if (!select || !wanted) return false;
+    const w = wanted.trim().toLowerCase();
+    const option = [...select.options].find(o => o.value && (byValue ? o.value === wanted.trim()
+      : o.textContent.trim().toLowerCase() === w || o.textContent.trim().toLowerCase().endsWith('· ' + w)));
+    if (!option) return false;
+    select.value = option.value;
+    select.dispatchEvent(new Event('change'));
+    return true;
+  };
+  const fillFromHeaders = text => {
+    const head = {};
+    for (const line of text.split(/\r?\n/).slice(0, 12)) {
+      const m = line.match(/^\s*(SUBJECT|SECTION|SEMESTER|DECK|BANK)\s*:\s*(.+?)\s*$/i);
+      if (m) head[m[1].toUpperCase() === 'BANK' ? 'DECK' : m[1].toUpperCase()] = m[2];
+    }
+    const missed = [];
+    if (head.SUBJECT && !choose(document.querySelector('[name=subject]'), head.SUBJECT)) missed.push('subject ' + head.SUBJECT);
+    if (head.SECTION && !choose(document.querySelector('[name=section]'), head.SECTION)) missed.push('sub-subject ' + head.SECTION);
+    if (head.SEMESTER && !choose(document.querySelector('[name=semester]'), head.SEMESTER, true)) missed.push('semester ' + head.SEMESTER);
+    if (head.DECK) document.querySelector('[name=deck_title]').value = head.DECK;
+    return missed;
+  };
+  picker.addEventListener('change', async () => {
+    const file = picker.files[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      status.textContent = `${file.name} is over 5 MB. Split it into smaller files.`;
+      picker.value = '';
+      return;
+    }
+    const text = (await file.text()).replace(/^\uFEFF/, '');
+    area.value = text;
+    picker.value = '';  // the text box is now the one source, so edits in it are kept
+    const count = (text.match(/^\s*Q\s*:/gim) || []).length;
+    const missed = fillFromHeaders(text);
+    status.textContent = `Loaded ${file.name}: ${count} question${count === 1 ? '' : 's'}.`
+      + (missed.length ? ` Not found on the site: ${missed.join(', ')}. Choose it above.` : '')
+      + ' Press Preview to check it.';
+  });
+})();
+
 (() => {
   const decks = JSON.parse(document.getElementById('decks-data').textContent);
   const sub = document.querySelector('[name=subject]'), sem = document.querySelector('[name=semester]');

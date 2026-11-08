@@ -2030,7 +2030,7 @@ class SavedTests(Base):
 
         page = self.client.get(reverse("bank:saved_quiz", args=[deck.slug]))
         self.assertContains(page, 'data-question-type="saved"')
-        self.assertContains(page, "?v=20261106-1")
+        self.assertContains(page, "?v=20261108-1")
 
         practice = self.client.get(reverse("bank:api_saved_questions", args=[deck.slug])).json()["questions"]
         self.assertEqual([item["id"] for item in practice], [question.pk])
@@ -3214,3 +3214,19 @@ class LabelExistingUofKMigrationTests(Base):
         anatomy_blank.refresh_from_db()
         self.assertEqual(bio_red_sea.label, "Red_Sea")
         self.assertEqual(anatomy_blank.label, "")
+
+
+class FileDropTests(Base):
+    def test_import_page_accepts_dropped_files(self):
+        self.client.force_login(self.editor)
+        page = self.client.get(reverse("bank:import"))
+        self.assertContains(page, 'class="import-text-drop" data-drop-target')
+        self.assertContains(page, "data-text-file")
+        self.assertContains(page, "bank/drop-files")
+
+    def test_import_preview_rows_accept_dropped_images(self):
+        self.client.force_login(self.editor)
+        page = self.client.post(reverse("bank:import"), {
+            "action": "preview", "text": SAMPLE, "subject": self.subject.pk,
+            "semester": 1, "deck_title": "Haematology"})
+        self.assertContains(page, "data-drop-target data-ok=")

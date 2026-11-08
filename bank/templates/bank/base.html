@@ -38,7 +38,7 @@
 <link rel="manifest" href="{% url 'bank:manifest' %}">
 <link rel="icon" type="image/svg+xml" href="{% static 'bank/icons/app-101.svg' %}">
 <link rel="apple-touch-icon" href="{% static 'bank/icons/app-101-192.png' %}">
-<link rel="stylesheet" href="{% static 'bank/style.css' %}?v=20261106-7">
+<link rel="stylesheet" href="{% static 'bank/style.css' %}?v=20261109-1">
 {% block head %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
@@ -224,6 +224,7 @@
 </aside>
 {% endif %}
 {% block scripts %}{% endblock %}
+<script src="{% static 'bank/drop-files.js' %}?v=1"></script>
 {% if user.is_authenticated %}<script src="{% static 'bank/resume_activity.js' %}?v=3"></script>{% endif %}
 </body>
 </html>
