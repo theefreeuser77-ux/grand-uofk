@@ -2030,7 +2030,7 @@ class SavedTests(Base):
 
         page = self.client.get(reverse("bank:saved_quiz", args=[deck.slug]))
         self.assertContains(page, 'data-question-type="saved"')
-        self.assertContains(page, "?v=20261108-1")
+        self.assertContains(page, "?v=20261110-1")
 
         practice = self.client.get(reverse("bank:api_saved_questions", args=[deck.slug])).json()["questions"]
         self.assertEqual([item["id"] for item in practice], [question.pk])
@@ -3302,3 +3302,74 @@ class ImportRedirectTests(Base):
         })
         self.assertRedirects(response, reverse("bank:import"))
         self.assertTrue(Question.objects.exists())
+
+
+class TopicPracticeTests(Base):
+    """Students paste an AI's list of question numbers to practise one topic of a chapter."""
+
+    def setUp(self):
+        super().setUp()
+        self.deck = self.import_sample()
+        self.client.force_login(self.student)
+        self.ids = list(self.deck.questions.order_by("id").values_list("pk", flat=True))
+
+    def test_chapter_page_links_to_topic_practice(self):
+        page = self.client.get(reverse("bank:bank_detail", args=[self.deck.slug]))
+        self.assertContains(page, reverse("bank:topic_practice", args=[self.deck.slug]))
+
+    def test_topic_page_lists_every_question_with_its_number(self):
+        page = self.client.get(reverse("bank:topic_practice", args=[self.deck.slug]) + "?topic=anaemia")
+        for pk in self.ids:
+            self.assertContains(page, f"#{pk} | ")
+        self.assertContains(page, 'value="anaemia"')
+        self.assertContains(page, "data-copy")
+
+    def test_long_chapters_are_split_into_parts(self):
+        from bank import views
+        with self.settings():
+            old, views.TOPIC_PART_CHARS = views.TOPIC_PART_CHARS, 50
+            try:
+                page = self.client.get(reverse("bank:topic_practice", args=[self.deck.slug]))
+            finally:
+                views.TOPIC_PART_CHARS = old
+        self.assertContains(page, f"Part 1 of {len(self.ids)}")
+
+    def test_messy_ai_reply_finds_questions_and_offers_type_filter(self):
+        reply = f"Sure! Matching: #{self.ids[0]}, {self.ids[1]}\nand 999999 and {self.ids[0]}"
+        page = self.client.get(reverse("bank:topic_quiz", args=[self.deck.slug]),
+                               {"numbers": reply, "topic": "blood"})
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "2 questions in")
+        self.assertContains(page, "MCQs &amp; True / False")
+        self.assertContains(page, 'All types together <span class="mute">(2)</span>')
+        self.assertContains(page, f"ids={self.ids[0]}%2C{self.ids[1]}")
+
+    def test_reply_without_matching_numbers_goes_back_with_a_message(self):
+        response = self.client.get(reverse("bank:topic_quiz", args=[self.deck.slug]),
+                                   {"numbers": "NONE", "topic": "blood"}, follow=True)
+        self.assertContains(response, "None of the numbers you pasted")
+        self.assertEqual(response.redirect_chain[0][0].split("?")[0],
+                         reverse("bank:topic_practice", args=[self.deck.slug]))
+
+    def test_chosen_type_starts_a_quiz_with_only_those_questions(self):
+        mcq = self.deck.questions.filter(kind__in=[Question.MCQ, Question.TF], is_lab=False).first()
+        other = self.deck.questions.exclude(pk=mcq.pk).first()
+        ids = f"{mcq.pk},{other.pk}"
+        page = self.client.get(reverse("bank:topic_quiz", args=[self.deck.slug]),
+                               {"ids": ids, "type": "mcq_tf", "topic": "blood"})
+        self.assertContains(page, 'data-question-type="mcq_tf"')
+        api = reverse("bank:api_topic_questions", args=[self.deck.slug])
+        data = self.client.get(api, {"ids": ids, "type": "mcq_tf"}).json()
+        got = {q["id"] for q in data["questions"]}
+        self.assertIn(mcq.pk, got)
+        if other.kind not in (Question.MCQ, Question.TF) or other.is_lab:
+            self.assertNotIn(other.pk, got)
+        everything = self.client.get(api, {"ids": ids, "type": "all"}).json()
+        self.assertEqual({q["id"] for q in everything["questions"]}, {mcq.pk, other.pk})
+
+    def test_api_ignores_questions_from_other_chapters(self):
+        other_deck = QuestionBank.objects.create(subject=self.subject, semester=2, title="Cardiology")
+        foreign = Question.objects.create(bank=other_deck, kind=Question.DESC, stem="x", answer="y")
+        data = self.client.get(reverse("bank:api_topic_questions", args=[self.deck.slug]),
+                               {"ids": f"{foreign.pk},{self.ids[0]}", "type": "all"}).json()
+        self.assertEqual([q["id"] for q in data["questions"]], [self.ids[0]])

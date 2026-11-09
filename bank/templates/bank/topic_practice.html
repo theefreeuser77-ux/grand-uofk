@@ -1,0 +1,119 @@
+{% extends "bank/base.html" %}
+{% block title %}Practise a topic · {{ bank.title }}{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="{{ bank.get_absolute_url }}">← {{ bank.title }}</a></p>
+<h2 class="pagetitle">Practise one topic</h2>
+<p class="mute">Haven't covered the whole chapter yet? Let any free AI chat (ChatGPT, Gemini, Claude…) pick the questions about your topic, then practise only those.</p>
+
+<div class="card topic-step">
+  <h3>1. Type your topic</h3>
+  <form method="get" class="topic-source">
+    <div class="field">
+      <label for="topic-input">Topic</label>
+      <input id="topic-input" name="topic" type="text" maxlength="80" value="{{ topic }}"
+             placeholder="e.g. brachial plexus, coagulation, the diaphragm" autocomplete="off">
+    </div>
+    {% if source_options|length > 1 %}
+    <div class="field">
+      <label for="topic-label">Question source</label>
+      <select id="topic-label" name="label" onchange="this.form.submit()">
+        {% for option in source_options %}
+        <option value="{{ option.key }}" {% if option.key == label %}selected{% endif %}>{{ option.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+  </form>
+  <p class="mute">{{ question_count }} question{{ question_count|pluralize }} in this chapter{% if label != "all" %} from this source{% endif %}.</p>
+</div>
+
+{% if parts %}
+<div class="card topic-step">
+  <h3>2. Copy the prompt into an AI chat</h3>
+  {% if parts|length > 1 %}
+  <p class="mute">This chapter is long, so the prompt is split into {{ parts|length }} parts. Send each part in a <b>new</b> chat and keep every reply.</p>
+  {% endif %}
+  {% for part in parts %}
+  <div class="topic-part" data-part="{{ forloop.counter }}" data-total="{{ parts|length }}">
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <b>{% if parts|length > 1 %}Part {{ forloop.counter }} of {{ parts|length }}{% else %}Prompt{% endif %}</b>
+      <button type="button" class="btn pri" data-copy>Copy</button>
+    </div>
+    <textarea class="topic-prompt" rows="4" readonly></textarea>
+    <textarea hidden class="topic-questions">{{ part }}</textarea>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card topic-step">
+  <h3>3. Paste the AI's reply</h3>
+  <form method="get" action="{% url 'bank:topic_quiz' bank.slug %}">
+    <input type="hidden" name="topic" value="{{ topic }}" data-topic-copy>
+    <input type="hidden" name="label" value="{{ label }}">
+    <div class="field">
+      <label for="topic-numbers">Question numbers</label>
+      <textarea id="topic-numbers" name="numbers" rows="3" required
+                placeholder="e.g. 8409, 8433, 8438"></textarea>
+      <span class="mute">Paste the replies of all parts together. Extra words are fine; only the numbers are used.</span>
+    </div>
+    <label class="nowrap"><input type="checkbox" name="shuffle" value="1"> Shuffle question order</label>
+    <p><button class="btn pri">Start practising</button></p>
+  </form>
+</div>
+{% else %}
+<div class="card"><p>This chapter has no questions{% if label != "all" %} from this source{% endif %} yet.</p></div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{{ bank.title|json_script:"chapter-title" }}
+<script>
+(() => {
+  const input = document.querySelector("#topic-input");
+  const parts = [...document.querySelectorAll(".topic-part")];
+  if (!input || !parts.length) return;
+  const chapter = JSON.parse(document.getElementById("chapter-title").textContent);
+  const topicCopy = document.querySelector("[data-topic-copy]");
+
+  const promptFor = (topic, questions, part, total) => [
+    `I am a medical student studying the chapter "${chapter}". Below is a list of exam questions` +
+      (total > 1 ? ` (part ${part} of ${total}).` : "."),
+    `Find EVERY question that is about this topic: "${topic}".`,
+    "Count a question as matching if its question, options or answer deal with the topic, even when the exact " +
+      "word is not used (related structures, synonyms, mechanisms, diseases, tests). Leave out questions that " +
+      "are about something else.",
+    "Each question starts with its number after #. Reply with ONLY the matching numbers, separated by commas, " +
+      "for example: 1204, 1290, 1315. No explanations. If none match, reply: NONE",
+    "",
+    "QUESTIONS:",
+    questions,
+  ].join("\n");
+
+  function update() {
+    const topic = input.value.trim();
+    topicCopy.value = topic;
+    parts.forEach(box => {
+      const area = box.querySelector(".topic-prompt");
+      const button = box.querySelector("[data-copy]");
+      area.value = topic
+        ? promptFor(topic, box.querySelector(".topic-questions").value, Number(box.dataset.part), Number(box.dataset.total))
+        : "Type your topic above first.";
+      button.disabled = !topic;
+      button.textContent = "Copy";
+    });
+  }
+
+  parts.forEach(box => box.querySelector("[data-copy]").addEventListener("click", event => {
+    const area = box.querySelector(".topic-prompt");
+    const done = () => { event.target.textContent = "Copied ✓"; };
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(area.value).then(done, () => { area.select(); document.execCommand("copy"); done(); });
+    } else {
+      area.select(); document.execCommand("copy"); done();
+    }
+  }));
+  input.addEventListener("input", update);
+  input.form.addEventListener("submit", event => { event.preventDefault(); update(); });
+  update();
+})();
+</script>
+{% endblock %}

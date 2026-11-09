@@ -12,7 +12,10 @@
     </nav>
     <h2 class="page-title">{{ bank.title }}</h2>
     {% if bank.description %}<p class="page-lede">{{ bank.description }}</p>{% endif %}
-    <a class="page-hero-cta" href="{% url 'bank:deck_exams' bank.slug %}">Set up a mock exam <span aria-hidden="true">→</span></a>
+    <div class="page-hero-ctas">
+      <a class="page-hero-cta" href="{% url 'bank:deck_exams' bank.slug %}">Set up a mock exam <span aria-hidden="true">→</span></a>
+      <a class="page-hero-cta" href="{% url 'bank:topic_practice' bank.slug %}" data-topic-link>Practise one topic <span aria-hidden="true">→</span></a>
+    </div>
   </section>
 
   <section class="study-sessions" aria-labelledby="study-sessions-title">

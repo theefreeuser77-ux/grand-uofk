@@ -1,6 +1,8 @@
+import hashlib
 import json
 import math
 import random
+import re
 import uuid
 from functools import wraps
 from datetime import timedelta
@@ -2333,6 +2335,142 @@ def api_book_chapter_questions(request, chapter_id):
           .select_related("image_asset", "answer_image_asset").prefetch_related("options", "image_targets")
           .order_by("id"))
     return JsonResponse({"title": chapter.title, "questions": serialize(qs, request.user, include_answers=True)})
+
+
+# ---------------------------------------------------------------- topic practice
+# Students practise one topic of a chapter: the site writes a prompt listing the chapter's questions,
+# the student pastes it into any AI chat, and pastes back the question numbers the AI picked.
+TOPIC_PART_CHARS = 30000      # about 8,000 tokens, comfortable for free AI chats
+
+
+def _short(text, limit):
+    text = " ".join((text or "").split())
+    return text if len(text) <= limit else text[:limit - 1].rstrip() + "…"
+
+
+def _topic_pool(bank, user, label):
+    qs = bank.questions.filter(is_in_sorting_bin=False, is_in_review_bin=False, book_chapter__isnull=True)
+    return sources.apply(qs, sources.normalize(label, user))
+
+
+def _topic_line(question):
+    """One compact line per question: its number, text and the words that say what it is about."""
+    parts = [f"#{question.pk}", _short(question.stem, 300)]
+    if question.kind == Question.DESC or (question.kind == Question.IMAGE and question.answer):
+        parts.append("Answer: " + _short(question.answer, 150))
+    targets = [t.answer for t in question.image_targets.all()]
+    if targets:
+        parts.append("Labels: " + _short("; ".join(targets), 150))
+    options = [o.text for o in question.options.all()]
+    if options:
+        parts.append("Options: " + "; ".join(_short(o, 80) for o in options))
+    return " | ".join(parts)
+
+
+def _topic_parts(lines):
+    parts, current, size = [], [], 0
+    for line in lines:
+        if current and size + len(line) > TOPIC_PART_CHARS:
+            parts.append("\n".join(current))
+            current, size = [], 0
+        current.append(line)
+        size += len(line) + 1
+    if current:
+        parts.append("\n".join(current))
+    return parts
+
+
+def _topic_numbers(text, allowed):
+    """Question numbers in whatever the AI replied: commas, spaces, lines, # signs, ranges like 12-15."""
+    found = []
+    for start, end in re.findall(r"(\d+)(?:\s*[-–]\s*(\d+))?", text or ""):
+        first, last = int(start), int(end or start)
+        numbers = range(first, last + 1) if first <= last <= first + 500 else [first, int(end or start)]
+        for number in numbers:
+            if number in allowed and number not in found:
+                found.append(number)
+    return found
+
+
+@login_required
+def topic_practice(request, slug):
+    bank = get_object_or_404(QuestionBank.objects.select_related("subject"), slug=slug)
+    label = sources.normalize(request.GET.get("label", sources.ALL), request.user)
+    questions = (_topic_pool(bank, request.user, label)
+                 .prefetch_related("options", "image_targets").order_by("id"))
+    parts = _topic_parts([_topic_line(q) for q in questions])
+    return render(request, "bank/topic_practice.html", {
+        "bank": bank, "parts": parts, "question_count": len(questions),
+        "topic": request.GET.get("topic", ""), "label": label,
+        "source_options": [{"key": key, "name": sources.filter_name(key, request.user)}
+                           for key in sources.filters_for(request.user)],
+    })
+
+
+# Question types a topic quiz can be limited to: (key, name, filter, quiz.js question type).
+TOPIC_TYPES = [
+    ("mcq_tf", "MCQs & True / False", Q(is_lab=False, kind__in=[Question.MCQ, Question.TF]), "mcq_tf"),
+    ("descriptive", "Descriptive", Q(is_lab=False, kind=Question.DESC), "descriptive"),
+    ("image", "Identify", Q(is_lab=False, kind=Question.IMAGE), "image"),
+    ("labs", "Labs", Q(is_lab=True), "labs"),
+    ("all", "All types together", Q(), "topic"),
+]
+
+
+def _topic_ids(request):
+    return [int(x) for x in request.GET.get("ids", "").split(",") if x.strip().isdigit()][:2000]
+
+
+@login_required
+@ensure_csrf_cookie
+def topic_quiz(request, slug):
+    bank = get_object_or_404(QuestionBank, slug=slug)
+    label = sources.normalize(request.GET.get("label", sources.ALL), request.user)
+    topic = _short(request.GET.get("topic", ""), 80)
+    pool = _topic_pool(bank, request.user, label)
+    back = reverse("bank:topic_practice", args=[bank.slug]) + "?" + urlencode({"topic": topic, "label": label})
+    if "numbers" in request.GET:      # straight from the paste box: read the AI's reply
+        numbers = _topic_numbers(request.GET["numbers"], set(pool.values_list("pk", flat=True)))
+    else:
+        numbers = list(pool.filter(pk__in=_topic_ids(request)).order_by("id").values_list("pk", flat=True))
+    if not numbers:
+        messages.error(request, "None of the numbers you pasted match a question in this chapter. "
+                                "Paste the AI's reply exactly as it gave it.")
+        return redirect(back)
+    ids = ",".join(map(str, numbers))
+    base = {"ids": ids, "label": label, "topic": topic}
+    if request.GET.get("shuffle"):
+        base["shuffle"] = "1"
+    chosen = next((t for t in TOPIC_TYPES if t[0] == request.GET.get("type")), None)
+    if chosen is None:
+        found = pool.filter(pk__in=numbers)
+        counts = found.aggregate(**{key: Count("id", filter=cond) if cond else Count("id")
+                                    for key, _, cond, _ in TOPIC_TYPES})
+        return render(request, "bank/topic_results.html", {
+            "bank": bank, "topic": topic, "back": back, "total": len(numbers),
+            "types": [{"key": key, "name": name, "count": counts[key],
+                       "url": request.path + "?" + urlencode({**base, "type": key})}
+                      for key, name, _, _ in TOPIC_TYPES],
+        })
+    key, name, _, question_type = chosen
+    return render(request, "bank/quiz.html", _quiz_context(
+        request, title=f"{topic or 'Topic'} · {name} · {bank.title}",
+        key=f"topic:{bank.slug}:{key}:{hashlib.sha1(ids.encode()).hexdigest()[:12]}",
+        api=reverse("bank:api_topic_questions", args=[bank.slug]) + "?" + urlencode(
+            {"ids": ids, "label": label, "type": key}),
+        back=request.path + "?" + urlencode(base), review=False, edit_api="",
+        question_type=question_type, can_sort=False, sort_api=""))
+
+
+@login_required
+def api_topic_questions(request, slug):
+    bank = get_object_or_404(QuestionBank, slug=slug)
+    label = sources.normalize(request.GET.get("label", sources.ALL), request.user)
+    type_filter = next((cond for key, _, cond, _ in TOPIC_TYPES if key == request.GET.get("type")), Q())
+    qs = (_topic_pool(bank, request.user, label).filter(type_filter, pk__in=_topic_ids(request))
+          .select_related("image_asset", "answer_image_asset").prefetch_related("options", "image_targets")
+          .order_by("id"))
+    return JsonResponse({"title": bank.title, "questions": serialize(qs, request.user, include_answers=True)})
 
 
 # ---------------------------------------------------------------- saved section

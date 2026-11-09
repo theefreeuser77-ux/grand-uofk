@@ -1,0 +1,21 @@
+{% extends "bank/base.html" %}
+{% block title %}{{ topic|default:"Topic" }} · {{ bank.title }}{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="{{ back }}">← Change topic or numbers</a></p>
+<h2 class="pagetitle">{{ topic|default:"Your topic" }}</h2>
+<p class="mute">{{ total }} question{{ total|pluralize }} in {{ bank.title }} match{{ total|pluralize:"es," }} this topic. Choose which type to practise.</p>
+
+<div class="card">
+  <ul class="topic-types">
+    {% for type in types %}
+    <li>
+      {% if type.count %}
+      <a class="btn{% if forloop.first %} pri{% endif %}" href="{{ type.url }}">{{ type.name }} <span class="mute">({{ type.count }})</span></a>
+      {% else %}
+      <span class="btn" aria-disabled="true" style="opacity:.45;pointer-events:none">{{ type.name }} <span class="mute">(0)</span></span>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endblock %}

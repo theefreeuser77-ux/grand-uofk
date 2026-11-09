@@ -3971,3 +3971,12 @@ tr.drop-active>td{background:var(--acc-soft)}
 .drop-done{outline:2px solid var(--ok);outline-offset:3px}
 .drop-rejected{outline:2px dashed var(--bad);outline-offset:3px}
 @media (prefers-reduced-motion:reduce){.drop-zone{transition:none}}
+
+/* Topic practice */
+.page-hero-ctas{display:flex;flex-wrap:wrap;gap:10px}
+.topic-step{margin-bottom:14px}
+.topic-step h3{margin-top:0}
+.topic-part{margin:10px 0 14px}
+.topic-prompt{width:100%;margin-top:6px;font-size:13px;resize:vertical}
+.topic-types{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.topic-types .btn{display:flex;justify-content:space-between;width:100%;max-width:420px}

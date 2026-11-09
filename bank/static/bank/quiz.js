@@ -12,7 +12,7 @@
   const AI_SETTINGS_KEY = `gd:settings:${D.userId}`;
   const AUTH = D.auth === "1";
   const BLOCK_SIZE = 50;
-  const MIXED_TYPES = ["saved", "book", "labs"];
+  const MIXED_TYPES = ["saved", "book", "labs", "topic"];
   const esc = s => String(s).replace(/[&<>\"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
   const answerImage = q => q.answer_image_url
     ? `<figure class="answer-image-figure"><img src="${esc(q.answer_image_url)}" alt="Answer image"></figure>` : "";
