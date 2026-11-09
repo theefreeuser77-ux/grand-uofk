@@ -2531,6 +2531,7 @@ def _image_question_form(request, bank, image, question=None):
             "answer_image": "",
             "explanation": question.explanation,
             "note": question.note,
+            "label": question.label,
             "book_chapter": question.book_chapter_id,
             "targets_json": json.dumps([
                 {"label": target.label, "answer": target.answer,
@@ -2553,6 +2554,7 @@ def _image_question_form(request, bank, image, question=None):
         requested_mode = Question.IMAGE_IDENTIFY
     form = ImageQuestionForm(request.POST or None, request.FILES or None, initial=initial or {
         "is_lab": request.GET.get("is_lab") == "1",
+        "label": request.GET.get("label", ""),
         "book_chapter": request.GET.get("book_chapter") or None,
         "answer_mode": requested_mode,
         "answer": "",
@@ -2624,7 +2626,7 @@ def _image_question_form(request, bank, image, question=None):
             question.explanation = form.cleaned_data["explanation"].strip()
             question.note = form.cleaned_data["note"].strip()
             question.book_chapter = form.cleaned_data["book_chapter"]
-            question.label = label_for_book(question.label, question.book_chapter)
+            question.label = label_for_book(form.cleaned_data["label"], question.book_chapter)
             question.save()
             question.options.all().delete()
             question.image_targets.all().delete()
@@ -2665,6 +2667,8 @@ def _image_question_form(request, bank, image, question=None):
                 add_url += ("&" if "?" in add_url else "?") + "is_lab=1"
             if question.book_chapter_id:
                 add_url += ("&" if "?" in add_url else "?") + f"book_chapter={question.book_chapter_id}"
+            if form.cleaned_data["label"]:
+                add_url += ("&" if "?" in add_url else "?") + urlencode({"label": form.cleaned_data["label"]})
             if next_url:
                 add_url += ("&" if "?" in add_url else "?") + urlencode({"next": next_url})
             return redirect(add_url)
@@ -2981,7 +2985,8 @@ def import_questions(request):
                     messages.success(
                         request, f"Imported {created} question(s){with_images} into {destination}“{deck.path}”"
                                  f"{in_book}. Skipped {bad} with errors and {dup} duplicate(s).")
-                    return redirect(deck)
+                    # Back to an empty import page, so the next chapter can be pasted straight away.
+                    return redirect("bank:import")
 
     rows = []
     for q in result.questions:

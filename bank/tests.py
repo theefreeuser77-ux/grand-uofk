@@ -3230,3 +3230,75 @@ class FileDropTests(Base):
             "action": "preview", "text": SAMPLE, "subject": self.subject.pk,
             "semester": 1, "deck_title": "Haematology"})
         self.assertContains(page, "data-drop-target data-ok=")
+
+
+class ManualLabelTests(Base):
+    """Questions added by hand pick their label from a dropdown of existing labels."""
+
+    def setUp(self):
+        super().setUp()
+        self.deck = QuestionBank.objects.create(subject=self.subject, semester=1, title="Image quiz")
+
+    make_image = ImageQuestionTests.make_image
+
+    def add_form_data(self, **extra):
+        return {
+            "bank": self.deck.pk, "number": "", "kind": Question.DESC,
+            "stem": "Describe a membrane.", "answer": "A lipid bilayer.",
+            "explanation": "", "note": "",
+            "options-TOTAL_FORMS": "4", "options-INITIAL_FORMS": "0",
+            "options-MIN_NUM_FORMS": "0", "options-MAX_NUM_FORMS": "1000", **extra,
+        }
+
+    def test_question_form_offers_university_and_existing_labels(self):
+        Question.objects.create(bank=self.deck, kind=Question.DESC, stem="x", answer="y", label="Gray's Review")
+        self.client.force_login(self.editor)
+        page = self.client.get(reverse("bank:question_add", args=[self.deck.slug]))
+        self.assertContains(page, '<select name="label"')
+        for label in ("U of K", "Gezira", "Neelain", "Nile_Valley", "Red_Sea", "Gray&#x27;s Review"):
+            self.assertContains(page, f'value="{label}"')
+
+    def test_manual_question_saves_chosen_label_and_rejects_unknown_ones(self):
+        self.client.force_login(self.editor)
+        url = reverse("bank:question_add", args=[self.deck.slug])
+        response = self.client.post(url, self.add_form_data(label="Nile_Valley"))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(Question.objects.get().label, "Nile_Valley")
+        response = self.client.post(url, self.add_form_data(label="Made up label"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Question.objects.count(), 1)
+
+    def test_image_question_saves_label_and_keeps_it_for_the_next_one(self):
+        image = self.make_image()
+        self.client.force_login(self.editor)
+        add_url = reverse("bank:image_question_add", args=[self.deck.slug, image.pk])
+        self.assertContains(self.client.get(add_url), '<select name="label"')
+        response = self.client.post(add_url + "?kind=desc", {
+            "answer_mode": Question.DESC, "stem": "Name the structure.", "answer": "Liver",
+            "label": "Red_Sea", "targets_json": "[]", "options_json": "[]", "add_another": "1",
+        })
+        self.assertEqual(Question.objects.get().label, "Red_Sea")
+        self.assertIn("label=Red_Sea", response["Location"])
+        next_page = self.client.get(response["Location"])
+        self.assertContains(next_page, '<option value="Red_Sea" selected>')
+
+    def test_editing_image_question_keeps_its_label(self):
+        image = self.make_image()
+        question = Question.objects.create(
+            bank=self.deck, kind=Question.DESC, stem="Name it.", answer="Liver",
+            image_asset=image, label="Gezira",
+        )
+        self.client.force_login(self.editor)
+        page = self.client.get(reverse("bank:question_edit", args=[question.pk]))
+        self.assertContains(page, '<option value="Gezira" selected>')
+
+
+class ImportRedirectTests(Base):
+    def test_successful_import_returns_to_the_import_page(self):
+        self.client.force_login(self.editor)
+        response = self.client.post(reverse("bank:import"), {
+            "action": "commit", "text": SAMPLE, "subject": self.subject.pk,
+            "semester": 1, "deck_title": "Haematology",
+        })
+        self.assertRedirects(response, reverse("bank:import"))
+        self.assertTrue(Question.objects.exists())

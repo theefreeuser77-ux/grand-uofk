@@ -3,6 +3,7 @@ import json
 from django import forms
 from django.forms.models import BaseInlineFormSet, inlineformset_factory
 
+from . import sources
 from .models import BookChapter, ImageTarget, Option, Question, QuestionBank, QuestionImage
 
 
@@ -138,6 +139,31 @@ def book_chapter_field():
     return field
 
 
+def label_choices(current=""):
+    """Dropdown choices for a question's label: the university labels first, then every other
+    label already used on the site (books, labs and so on), plus the question's own label."""
+    used = set(Question.objects.exclude(label="").values_list("label", flat=True).distinct())
+    if current:
+        used.add(current)
+    # The standard spelling of each university (the one the import prompts use) is always offered,
+    # even before any question carries it; other spellings appear only if questions use them.
+    universities = [labels[0] for _, _, labels in sources.UNIVERSITIES]
+    uni_lower = {l.lower() for _, _, labels in sources.UNIVERSITIES for l in labels}
+    others = sorted((l for l in used if l.lower() not in uni_lower), key=str.lower)
+    variants = sorted(l for l in used if l.lower() in uni_lower and l not in universities)
+    choices = [("", "No label"), ("Universities", [(l, l) for l in universities + variants])]
+    if others:
+        choices.append(("Other labels", [(l, l) for l in others]))
+    return choices
+
+
+def label_field(current=""):
+    return forms.ChoiceField(
+        choices=label_choices(current), required=False, label="Label",
+        help_text="Where the question comes from. Choose an existing label so filters keep working.",
+    )
+
+
 def label_for_book(label, chapter):
     """Questions from a Library book carry its name as their label, unless they already have one."""
     return label or (chapter.book.title if chapter else "")
@@ -175,6 +201,7 @@ class QuestionForm(forms.ModelForm):
             "subject__order", "semester", "title")
         f.label_from_instance = lambda d: d.path
         f.label = "Deck (subject › semester › title)"
+        self.fields["label"] = label_field(self.instance.label)
         self.fields["book_chapter"] = book_chapter_field()
 
     def clean(self):
@@ -214,6 +241,7 @@ class ImageQuestionForm(forms.Form):
     def __init__(self, *args, has_answer_image=False, **kwargs):
         self.has_answer_image = has_answer_image
         super().__init__(*args, **kwargs)
+        self.fields["label"] = label_field(self.initial.get("label", ""))
         self.fields["book_chapter"] = book_chapter_field()
 
     is_lab = forms.BooleanField(
