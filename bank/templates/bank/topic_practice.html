@@ -39,7 +39,7 @@
       <b>{% if parts|length > 1 %}Part {{ forloop.counter }} of {{ parts|length }}{% else %}Prompt{% endif %}</b>
       <button type="button" class="btn pri" data-copy>Copy</button>
     </div>
-    <textarea class="topic-prompt" rows="4" readonly></textarea>
+    <textarea class="topic-prompt" hidden readonly></textarea>
     <textarea hidden class="topic-questions">{{ part }}</textarea>
   </div>
   {% endfor %}
@@ -98,18 +98,26 @@
         ? promptFor(topic, box.querySelector(".topic-questions").value, Number(box.dataset.part), Number(box.dataset.total))
         : "Type your topic above first.";
       button.disabled = !topic;
-      button.textContent = "Copy";
+      button.textContent = topic ? "Copy" : "Type a topic first";
     });
   }
 
   parts.forEach(box => box.querySelector("[data-copy]").addEventListener("click", event => {
-    const area = box.querySelector(".topic-prompt");
+    const text = box.querySelector(".topic-prompt").value;
     const done = () => { event.target.textContent = "Copied ✓"; };
-    if (navigator.clipboard && window.isSecureContext) {
-      navigator.clipboard.writeText(area.value).then(done, () => { area.select(); document.execCommand("copy"); done(); });
-    } else {
-      area.select(); document.execCommand("copy"); done();
-    }
+    const fallback = () => {      // older browsers: copy through a temporary off-screen box
+      const temp = document.createElement("textarea");
+      temp.value = text;
+      temp.setAttribute("readonly", "");
+      temp.style.cssText = "position:fixed;left:-9999px;top:0";
+      document.body.appendChild(temp);
+      temp.select();
+      document.execCommand("copy");
+      temp.remove();
+      done();
+    };
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done, fallback);
+    else fallback();
   }));
   input.addEventListener("input", update);
   input.form.addEventListener("submit", event => { event.preventDefault(); update(); });
