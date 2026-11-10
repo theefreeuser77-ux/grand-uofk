@@ -86,11 +86,11 @@ def parse_marks(text, item_count):
     return marks
 
 
-def _gemini_generate(prompt, item_count, max_output_tokens=None, timeout=25):
+def _gemini_generate(prompt, item_count, max_output_tokens=None, timeout=25, model=None, extra_config=None):
     api_key = getattr(settings, "GEMINI_API_KEY", "")
     if not api_key:
         raise AIMarkingUnavailable("AI marking isn't configured. Please assess your answers manually.")
-    model = getattr(settings, "GEMINI_MODEL", "gemini-2.5-flash")
+    model = model or getattr(settings, "GEMINI_MODEL", "gemini-2.5-flash")
     url = (
         "https://generativelanguage.googleapis.com/v1beta/models/"
         f"{quote(model, safe='')}:generateContent"
@@ -100,6 +100,7 @@ def _gemini_generate(prompt, item_count, max_output_tokens=None, timeout=25):
         "generationConfig": {
             "temperature": 0,
             "maxOutputTokens": max_output_tokens or max(64, item_count * 8),
+            **(extra_config or {}),
         },
     }
     request = Request(
@@ -138,10 +139,12 @@ def _gemini_generate(prompt, item_count, max_output_tokens=None, timeout=25):
             raise AIMarkingUnavailable(
                 "Google Gemini rejected the API key or its permissions. Check GEMINI_API_KEY."
             ) from exc
-        raise AIMarkingUnavailable(
+        error = AIMarkingUnavailable(
             f"Google Gemini returned HTTP {exc.code}. "
             f"{api_message or 'Please use manual assessment and check the server logs.'}"
-        ) from exc
+        )
+        error.status = exc.code
+        raise error from exc
     except (URLError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         logger.warning("Gemini exam marking request failed (%s).", type(exc).__name__)
         raise AIMarkingUnavailable(

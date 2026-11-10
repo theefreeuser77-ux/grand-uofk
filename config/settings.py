@@ -125,3 +125,5 @@ GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 # "Practise one topic" AI search: site-wide AI requests per day (0 turns it off) and per student.
 TOPIC_AI_DAILY_LIMIT = int(os.environ.get("TOPIC_AI_DAILY_LIMIT", "150"))
 TOPIC_AI_USER_DAILY_LIMIT = int(os.environ.get("TOPIC_AI_USER_DAILY_LIMIT", "10"))
+# Optional lighter/faster model for topic search only; empty means GEMINI_MODEL.
+TOPIC_AI_MODEL = os.environ.get("TOPIC_AI_MODEL", "")

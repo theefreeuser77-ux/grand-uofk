@@ -2355,15 +2355,17 @@ def _topic_pool(bank, user, label):
 
 def _topic_line(question):
     """One compact line per question: its number, text and the words that say what it is about."""
-    parts = [f"#{question.pk}", _short(question.stem, 300)]
+    # Kept short: the topic is nearly always clear from the start of the question and options,
+    # and shorter lines make the AI answer much faster.
+    parts = [f"#{question.pk}", _short(question.stem, 220)]
     if question.kind == Question.DESC or (question.kind == Question.IMAGE and question.answer):
-        parts.append("Answer: " + _short(question.answer, 150))
+        parts.append("Answer: " + _short(question.answer, 100))
     targets = [t.answer for t in question.image_targets.all()]
     if targets:
-        parts.append("Labels: " + _short("; ".join(targets), 150))
+        parts.append("Labels: " + _short("; ".join(targets), 100))
     options = [o.text for o in question.options.all()]
     if options:
-        parts.append("Options: " + "; ".join(_short(o, 80) for o in options))
+        parts.append("Options: " + "; ".join(_short(o, 45) for o in options))
     return " | ".join(parts)
 
 

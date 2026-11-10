@@ -3450,3 +3450,57 @@ class TopicAISearchTests(Base):
 
     def test_get_is_not_allowed(self):
         self.assertEqual(self.client.get(self.url).status_code, 405)
+
+
+@override_settings(GEMINI_API_KEY="test-key", TOPIC_AI_DAILY_LIMIT=150, TOPIC_AI_USER_DAILY_LIMIT=10,
+                   GEMINI_MODEL="test-model", TOPIC_AI_MODEL="")
+class TopicAIRequestTests(Base):
+    def setUp(self):
+        super().setUp()
+        cache.clear()
+        self.deck = self.import_sample()
+        self.ids = list(self.deck.questions.order_by("id").values_list("pk", flat=True))
+        self.client.force_login(self.student)
+        self.url = reverse("bank:topic_ai_search", args=[self.deck.slug])
+
+    def test_big_chapters_are_split_and_the_answers_merged(self):
+        from bank import topic_ai
+        replies = iter([str(self.ids[0]), f"{self.ids[1]}"])
+        with patch.object(topic_ai, "CHUNK_CHARACTERS", 10), \
+                patch("bank.ai_marking._gemini_generate", side_effect=lambda *a, **k: next(replies)) as gemini:
+            response = self.client.post(self.url, {"topic": "blood", "label": "all"})
+        self.assertEqual(gemini.call_count, 2)
+        prompts = [call.args[0] for call in gemini.call_args_list]
+        self.assertTrue(any("(part 1 of 2)" in p for p in prompts))
+        self.assertEqual(sorted(TopicSearch.objects.get().question_ids), sorted(self.ids[:2]))
+        quota = AIRequestQuota.objects.get(name="gemini-topic-search")
+        self.assertEqual(len(quota.request_timestamps), 2)
+        self.assertIn("ids=", response["Location"])
+
+    def test_model_that_rejects_minimal_thinking_is_retried_and_remembered(self):
+        from bank.ai_marking import AIMarkingUnavailable
+        rejected = AIMarkingUnavailable("bad thinking setting")
+        rejected.status = 400
+        calls = []
+
+        def fake(prompt, items, **kwargs):
+            calls.append(kwargs["extra_config"])
+            if kwargs["extra_config"] == {"thinkingConfig": {"thinkingLevel": "minimal"}}:
+                raise rejected
+            return str(self.ids[0])
+
+        with patch("bank.ai_marking._gemini_generate", side_effect=fake):
+            self.client.post(self.url, {"topic": "one", "label": "all"})
+            self.client.post(self.url, {"topic": "two", "label": "all"})
+        self.assertEqual(calls, [
+            {"thinkingConfig": {"thinkingLevel": "minimal"}},
+            {"thinkingConfig": {"thinkingBudget": 0}},
+            {"thinkingConfig": {"thinkingBudget": 0}},      # second search skips the rejected setting
+        ])
+        self.assertEqual(TopicSearch.objects.count(), 2)
+
+    @override_settings(TOPIC_AI_MODEL="light-model")
+    def test_topic_search_can_use_its_own_model(self):
+        with patch("bank.ai_marking._gemini_generate", return_value="NONE") as gemini:
+            self.client.post(self.url, {"topic": "one", "label": "all"})
+        self.assertEqual(gemini.call_args.kwargs["model"], "light-model")
