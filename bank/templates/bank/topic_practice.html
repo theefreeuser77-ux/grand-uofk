@@ -1,87 +1,107 @@
 {% extends "bank/base.html" %}
 {% block title %}Practise a topic · {{ bank.title }}{% endblock %}
 {% block content %}
-<p class="crumbs"><a href="{{ bank.get_absolute_url }}">← {{ bank.title }}</a></p>
-<h2 class="pagetitle">Practise one topic</h2>
-<p class="mute">Haven't covered the whole chapter yet? Type a topic and let an AI pick the questions about it, then practise only those.</p>
+<main class="study-page topic-page">
+  <section class="page-hero">
+    {% include "bank/_hero_peaks.html" %}
+    <nav class="page-crumbs" aria-label="Breadcrumb">
+      <a href="{% url 'bank:home' %}">Subjects</a>
+      {% if bank.subject %}<span aria-hidden="true">/</span><a href="{{ bank.subject.get_absolute_url }}">{{ bank.subject.name }}</a>{% endif %}
+      <span aria-hidden="true">/</span><a href="{{ bank.get_absolute_url }}">{{ bank.title }}</a>
+    </nav>
+    <h2 class="page-title">Practise one topic</h2>
+    <p class="page-lede">Haven't finished the whole chapter? Type the topic you've covered, and only its questions will be picked for you.</p>
+  </section>
 
-<div class="card topic-step">
-  <h3>1. Type your topic</h3>
-  <form method="get" class="topic-source">
-    <div class="field">
-      <label for="topic-input">Topic</label>
-      <input id="topic-input" name="topic" type="text" maxlength="80" value="{{ topic }}"
-             placeholder="e.g. brachial plexus, coagulation, the diaphragm" autocomplete="off">
+  <section class="topic-section" aria-labelledby="topic-heading">
+    <div class="study-section-heading">
+      <div><p>YOUR TOPIC</p><h2 id="topic-heading">What do you want to practise?</h2></div>
+      <span class="study-total">{{ question_count }} question{{ question_count|pluralize }} in this chapter</span>
     </div>
-    {% if source_options|length > 1 %}
-    <div class="field">
-      <label for="topic-label">Question source</label>
-      <select id="topic-label" name="label" onchange="this.form.submit()">
-        {% for option in source_options %}
-        <option value="{{ option.key }}" {% if option.key == label %}selected{% endif %}>{{ option.name }}</option>
-        {% endfor %}
-      </select>
+
+    <form method="get" class="topic-search" id="topic-form">
+      <label class="topic-search-box" for="topic-input">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 3a7 7 0 0 1 5.6 11.2l4.6 4.6-1.4 1.4-4.6-4.6A7 7 0 1 1 10 3zm0 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10z"/></svg>
+        <input id="topic-input" name="topic" type="text" maxlength="80" value="{{ topic }}" enterkeyhint="search"
+               placeholder="e.g. brachial plexus, coagulation" autocomplete="off" aria-label="Topic">
+      </label>
+      {% if source_options|length > 1 %}
+      <label class="study-label-filter topic-filter" for="topic-label">
+        <span>QUESTION SOURCE</span>
+        <select id="topic-label" name="label" onchange="this.form.submit()">
+          {% for option in source_options %}
+          <option value="{{ option.key }}" {% if option.key == label %}selected{% endif %}>{{ option.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {% endif %}
+    </form>
+
+    {% if ai_enabled and parts %}
+    <form method="post" action="{% url 'bank:topic_ai_search' bank.slug %}" class="topic-ai" data-topic-ai>
+      {% csrf_token %}
+      <input type="hidden" name="topic" value="{{ topic }}" data-topic-copy>
+      <input type="hidden" name="label" value="{{ label }}">
+      <button class="topic-ai-button" data-ai-button>Find the questions with AI</button>
+      <p class="topic-ai-note" data-ai-note><b>{{ ai_searches_left }}</b> AI search{{ ai_searches_left|pluralize:"es" }} left for you today. Topics someone already searched in this chapter are free and instant.</p>
+    </form>
+    <div class="ai-wait" data-ai-wait hidden role="status" aria-live="polite">
+      <div class="ai-wait-box">
+        <div class="ai-wait-orb" aria-hidden="true"><span></span><span></span><span></span></div>
+        <h3 class="ai-wait-title">Finding <q data-ai-topic></q></h3>
+        <p class="ai-wait-step" data-ai-step>Starting…</p>
+        <div class="ai-wait-bar" aria-hidden="true"><i data-ai-bar></i></div>
+        <p class="ai-wait-time mute"><span data-ai-seconds>0</span>s · usually 10-40 seconds. Please keep this page open.</p>
+      </div>
     </div>
     {% endif %}
-  </form>
-  <p class="mute">{{ question_count }} question{{ question_count|pluralize }} in this chapter{% if label != "all" %} from this source{% endif %}.</p>
-  {% if ai_enabled and parts %}
-  <form method="post" action="{% url 'bank:topic_ai_search' bank.slug %}" class="topic-ai" data-topic-ai>
-    {% csrf_token %}
-    <input type="hidden" name="topic" value="{{ topic }}" data-topic-copy>
-    <input type="hidden" name="label" value="{{ label }}">
-    <button class="btn pri" data-ai-button>Find the questions with AI</button>
-    <span class="mute" data-ai-note>{{ ai_searches_left }} AI search{{ ai_searches_left|pluralize:"es" }} left for you today. Topics someone already searched in this chapter are free and instant.</span>
-  </form>
-  <div class="ai-wait" data-ai-wait hidden role="status" aria-live="polite">
-    <div class="ai-wait-box">
-      <div class="ai-wait-orb" aria-hidden="true"><span></span><span></span><span></span></div>
-      <h3 class="ai-wait-title">Finding <q data-ai-topic></q></h3>
-      <p class="ai-wait-step" data-ai-step>Starting…</p>
-      <div class="ai-wait-bar" aria-hidden="true"><i data-ai-bar></i></div>
-      <p class="ai-wait-time mute"><span data-ai-seconds>0</span>s · usually 10-40 seconds. Please keep this page open.</p>
-    </div>
-  </div>
-  {% endif %}
-</div>
+  </section>
 
-{% if parts %}
-{% if ai_enabled %}<h3 class="topic-or" id="copy-steps">Or do it yourself in any AI chat (ChatGPT, Gemini, Claude…)</h3>{% endif %}
-<div class="card topic-step"{% if not ai_enabled %} id="copy-steps"{% endif %}>
-  <h3>2. Copy the prompt into an AI chat</h3>
-  {% if parts|length > 1 %}
-  <p class="mute">This chapter is long, so the prompt is split into {{ parts|length }} parts. Send each part in a <b>new</b> chat and keep every reply.</p>
-  {% endif %}
-  {% for part in parts %}
-  <div class="topic-part" data-part="{{ forloop.counter }}" data-total="{{ parts|length }}">
-    <div class="row" style="justify-content:space-between;align-items:center">
-      <b>{% if parts|length > 1 %}Part {{ forloop.counter }} of {{ parts|length }}{% else %}Prompt{% endif %}</b>
-      <button type="button" class="btn pri" data-copy>Copy</button>
-    </div>
-    <textarea class="topic-prompt" hidden readonly></textarea>
-    <textarea hidden class="topic-questions">{{ part }}</textarea>
-  </div>
-  {% endfor %}
-</div>
+  {% if parts %}
+  <details class="topic-manual" id="copy-steps"{% if not ai_enabled %} open{% endif %}>
+    <summary>
+      <span class="topic-manual-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 3h11v13h-2V5H8zM5 7h10v14H5zm2 2v10h6V9z"/></svg></span>
+      <span><b>{% if ai_enabled %}Do it yourself in any AI chat{% else %}Use any AI chat{% endif %}</b>
+        <small>ChatGPT, Gemini, Claude… free, with no daily limit</small></span>
+      <span class="topic-manual-chevron" aria-hidden="true">⌄</span>
+    </summary>
 
-<div class="card topic-step">
-  <h3>3. Paste the AI's reply</h3>
-  <form method="get" action="{% url 'bank:topic_quiz' bank.slug %}">
-    <input type="hidden" name="topic" value="{{ topic }}" data-topic-copy>
-    <input type="hidden" name="label" value="{{ label }}">
-    <div class="field">
-      <label for="topic-numbers">Question numbers</label>
-      <textarea id="topic-numbers" name="numbers" rows="3" required
-                placeholder="e.g. 8409, 8433, 8438"></textarea>
-      <span class="mute">Paste the replies of all parts together. Extra words are fine; only the numbers are used.</span>
-    </div>
-    <label class="nowrap"><input type="checkbox" name="shuffle" value="1"> Shuffle question order</label>
-    <p><button class="btn pri">Start practising</button></p>
-  </form>
-</div>
-{% else %}
-<div class="card"><p>This chapter has no questions{% if label != "all" %} from this source{% endif %} yet.</p></div>
-{% endif %}
+    <ol class="topic-steps">
+      <li>
+        <h3>Copy the prompt</h3>
+        {% if parts|length > 1 %}
+        <p class="mute">This chapter is long, so the prompt comes in {{ parts|length }} parts. Send each part in a <b>new</b> chat.</p>
+        {% else %}
+        <p class="mute">Paste it into a new chat.</p>
+        {% endif %}
+        <div class="topic-parts">
+          {% for part in parts %}
+          <div class="topic-part" data-part="{{ forloop.counter }}" data-total="{{ parts|length }}">
+            <span>{% if parts|length > 1 %}Part {{ forloop.counter }} of {{ parts|length }}{% else %}The prompt{% endif %}</span>
+            <button type="button" class="topic-copy" data-copy>Copy</button>
+            <textarea class="topic-prompt" hidden readonly></textarea>
+            <textarea hidden class="topic-questions">{{ part }}</textarea>
+          </div>
+          {% endfor %}
+        </div>
+      </li>
+      <li>
+        <h3>Paste the AI's reply</h3>
+        <form method="get" action="{% url 'bank:topic_quiz' bank.slug %}" class="topic-reply">
+          <input type="hidden" name="topic" value="{{ topic }}" data-topic-copy>
+          <input type="hidden" name="label" value="{{ label }}">
+          <textarea id="topic-numbers" name="numbers" rows="3" required aria-label="The AI's reply"
+                    placeholder="e.g. 8409, 8433, 8438"></textarea>
+          <p class="mute">{% if parts|length > 1 %}Paste the replies of all parts together. {% endif %}Extra words are fine; only the numbers are used.</p>
+          <button class="topic-ai-button">Find my questions</button>
+        </form>
+      </li>
+    </ol>
+  </details>
+  {% else %}
+  <p class="topic-empty">This chapter has no questions{% if label != "all" %} from this source{% endif %} yet.</p>
+  {% endif %}
+</main>
 {% endblock %}
 {% block scripts %}
 {{ bank.title|json_script:"chapter-title" }}
@@ -188,7 +208,13 @@
     else fallback();
   }));
   input.addEventListener("input", update);
-  input.form.addEventListener("submit", event => { event.preventDefault(); update(); });
+  input.form.addEventListener("submit", event => {
+    event.preventDefault();
+    update();
+    if (aiForm && input.value.trim()) aiForm.requestSubmit ? aiForm.requestSubmit() : aiForm.submit();
+  });
+  const manual = document.querySelector("#copy-steps");
+  if (manual && location.hash === "#copy-steps") manual.open = true;
   update();
 })();
 </script>

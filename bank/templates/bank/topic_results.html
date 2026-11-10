@@ -1,21 +1,42 @@
 {% extends "bank/base.html" %}
 {% block title %}{{ topic|default:"Topic" }} · {{ bank.title }}{% endblock %}
 {% block content %}
-<p class="crumbs"><a href="{{ back }}">← Change topic or numbers</a></p>
-<h2 class="pagetitle">{{ topic|default:"Your topic" }}</h2>
-<p class="mute">{{ total }} question{{ total|pluralize }} in {{ bank.title }} match{{ total|pluralize:"es," }} this topic. Choose which type to practise.</p>
+<main class="study-page topic-page">
+  <section class="page-hero">
+    {% include "bank/_hero_peaks.html" %}
+    <nav class="page-crumbs" aria-label="Breadcrumb">
+      <a href="{{ bank.get_absolute_url }}">{{ bank.title }}</a>
+      <span aria-hidden="true">/</span><a href="{{ back }}">Change topic</a>
+    </nav>
+    <h2 class="page-title">{{ topic|default:"Your topic" }}</h2>
+    <p class="page-lede">{{ total }} question{{ total|pluralize }} in {{ bank.title }} match{{ total|pluralize:"es," }} this topic.</p>
+  </section>
 
-<div class="card">
-  <ul class="topic-types">
-    {% for type in types %}
-    <li>
-      {% if type.count %}
-      <a class="btn{% if forloop.first %} pri{% endif %}" href="{{ type.url }}">{{ type.name }} <span class="mute">({{ type.count }})</span></a>
-      {% else %}
-      <span class="btn" aria-disabled="true" style="opacity:.45;pointer-events:none">{{ type.name }} <span class="mute">(0)</span></span>
-      {% endif %}
-    </li>
-    {% endfor %}
-  </ul>
-</div>
+  <section class="study-sessions" aria-labelledby="topic-types-title">
+    <div class="study-section-heading">
+      <div><p>QUESTION TYPES</p><h2 id="topic-types-title">Choose what to practise</h2></div>
+    </div>
+    <div class="type-cards">
+      {% for type in types %}
+      <article class="type-card type-{{ type.key }}{% if not type.count %} is-empty{% endif %}" style="--i:{{ forloop.counter0 }}">
+        {% if type.count %}<a class="type-card-link" href="{{ type.url }}" aria-label="Start {{ type.name }}"></a>{% endif %}
+        <div class="type-card-head">
+          <span class="type-icon" aria-hidden="true"><svg viewBox="0 0 24 24">
+            {% if type.key == "mcq_tf" %}<path d="M4 6h2v2H4zM9 6h11v2H9zM4 11h2v2H4zM9 11h11v2H9zM4 16h2v2H4zM9 16h11v2H9z"/>
+            {% elif type.key == "descriptive" %}<path d="M5 3h14v18H5zm2 2v14h10V5zm2 2h6v2H9zm0 4h6v2H9zm0 4h4v2H9z"/>
+            {% elif type.key == "image" %}<path d="M3 5h18v14H3zm2 2v8.6l4-4 3 3 2.5-2.5L19 16.6V7zm9.5 1.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z"/>
+            {% elif type.key == "labs" %}<path d="M9 3h6v2h-1v4.6l5.4 8.3A2 2 0 0 1 17.7 21H6.3a2 2 0 0 1-1.7-3.1L10 9.6V5H9zm3 8.4L8.6 16h6.8z"/>
+            {% else %}<path d="M4 4h7v7H4zm9 0h7v7h-7zM4 13h7v7H4zm9 0h7v7h-7z"/>{% endif %}
+          </svg></span>
+          <div><h3>{{ type.name }}</h3></div>
+        </div>
+        <div class="type-card-foot">
+          <span class="type-count"><strong>{{ type.count }}</strong> question{{ type.count|pluralize }}</span>
+          <span class="type-start">{% if type.count %}Start <span aria-hidden="true">→</span>{% else %}None on this topic{% endif %}</span>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+</main>
 {% endblock %}

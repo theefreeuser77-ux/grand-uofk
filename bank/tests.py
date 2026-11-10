@@ -3341,7 +3341,8 @@ class TopicPracticeTests(Base):
         self.assertEqual(page.status_code, 200)
         self.assertContains(page, "2 questions in")
         self.assertContains(page, "MCQs &amp; True / False")
-        self.assertContains(page, 'All types together <span class="mute">(2)</span>')
+        self.assertContains(page, "All types together")
+        self.assertContains(page, 'class="type-card type-all"')
         self.assertContains(page, f"ids={self.ids[0]}%2C{self.ids[1]}")
 
     def test_reply_without_matching_numbers_goes_back_with_a_message(self):
@@ -3392,7 +3393,7 @@ class TopicAISearchTests(Base):
     def test_page_shows_ai_button_with_searches_left(self):
         page = self.client.get(reverse("bank:topic_practice", args=[self.deck.slug]))
         self.assertContains(page, "Find the questions with AI")
-        self.assertContains(page, "2 AI searches left for you today")
+        self.assertContains(page, "<b>2</b> AI searches left for you today")
         self.assertContains(page, "data-ai-wait hidden")      # the waiting view, shown while the AI works
 
     @override_settings(GEMINI_API_KEY="")
