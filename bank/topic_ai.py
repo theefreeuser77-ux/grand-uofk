@@ -22,9 +22,7 @@ from .models import AIRequestQuota, TopicSearch
 logger = logging.getLogger(__name__)
 
 QUOTA_NAME = "gemini-topic-search"
-REQUESTS_PER_MINUTE = 12
 MAX_PROMPT_CHARACTERS = 600_000      # about 150,000 tokens for the whole chapter
-CHUNK_CHARACTERS = 30_000            # each request reads about 7,500 tokens, so it answers quickly
 REQUEST_TIMEOUT = 75
 # Ways to ask the model to think as little as possible, tried in order. Gemini 3 models take
 # thinkingLevel, 2.5 models take thinkingBudget; models that reject both get no setting.
@@ -41,6 +39,16 @@ class TopicSearchUnavailable(Exception):
 
 def daily_limit():
     return int(getattr(settings, "TOPIC_AI_DAILY_LIMIT", 150))
+
+
+def per_minute_limit():
+    return int(getattr(settings, "TOPIC_AI_REQUESTS_PER_MINUTE", 4))
+
+
+def chunk_characters():
+    """How much of a chapter goes in one request. Large by default, so one search costs one
+    request (free tiers allow very few requests per day); lower it to split big chapters."""
+    return int(getattr(settings, "TOPIC_AI_CHUNK_CHARACTERS", 600_000))
 
 
 def user_daily_limit():
@@ -85,7 +93,7 @@ def _reserve_request(now=None, count=1):
         quota, _ = AIRequestQuota.objects.select_for_update().get_or_create(name=QUOTA_NAME)
         day = [t for t in quota.request_timestamps if 0 <= now - t < 86400]
         minute = [t for t in day if now - t < 60]
-        if len(day) + count > daily_limit() or len(minute) + count > REQUESTS_PER_MINUTE:
+        if len(day) + count > daily_limit() or len(minute) + count > per_minute_limit():
             if day != quota.request_timestamps:
                 quota.request_timestamps = day
                 quota.save(update_fields=["request_timestamps"])
@@ -113,7 +121,7 @@ def build_prompt(chapter, topic, lines, part=1, total=1):
 
 
 def chunks(lines, size=None):
-    size = size or CHUNK_CHARACTERS
+    size = size or chunk_characters()
     groups, current, length = [], [], 0
     for line in lines:
         if current and length + len(line) > size:

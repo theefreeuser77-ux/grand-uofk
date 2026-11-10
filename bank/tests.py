@@ -3464,9 +3464,8 @@ class TopicAIRequestTests(Base):
         self.url = reverse("bank:topic_ai_search", args=[self.deck.slug])
 
     def test_big_chapters_are_split_and_the_answers_merged(self):
-        from bank import topic_ai
         replies = iter([str(self.ids[0]), f"{self.ids[1]}"])
-        with patch.object(topic_ai, "CHUNK_CHARACTERS", 10), \
+        with self.settings(TOPIC_AI_CHUNK_CHARACTERS=10), \
                 patch("bank.ai_marking._gemini_generate", side_effect=lambda *a, **k: next(replies)) as gemini:
             response = self.client.post(self.url, {"topic": "blood", "label": "all"})
         self.assertEqual(gemini.call_count, 2)
@@ -3498,6 +3497,20 @@ class TopicAIRequestTests(Base):
             {"thinkingConfig": {"thinkingBudget": 0}},      # second search skips the rejected setting
         ])
         self.assertEqual(TopicSearch.objects.count(), 2)
+
+    def test_whole_chapter_goes_in_one_request_by_default(self):
+        with patch("bank.ai_marking._gemini_generate", return_value="NONE") as gemini:
+            self.client.post(self.url, {"topic": "one", "label": "all"})
+        self.assertEqual(gemini.call_count, 1)
+        self.assertNotIn("(part 1", gemini.call_args.args[0])
+
+    @override_settings(TOPIC_AI_REQUESTS_PER_MINUTE=1)
+    def test_per_minute_limit_protects_the_google_quota(self):
+        with patch("bank.ai_marking._gemini_generate", return_value="NONE") as gemini:
+            self.client.post(self.url, {"topic": "one", "label": "all"})
+            response = self.client.post(self.url, {"topic": "two", "label": "all"}, follow=True)
+        self.assertEqual(gemini.call_count, 1)
+        self.assertContains(response, "The AI is busy right now")
 
     @override_settings(TOPIC_AI_MODEL="light-model")
     def test_topic_search_can_use_its_own_model(self):

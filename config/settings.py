@@ -123,7 +123,11 @@ SUPABASE_STORAGE_BUCKET = os.environ.get(
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 # "Practise one topic" AI search: site-wide AI requests per day (0 turns it off) and per student.
-TOPIC_AI_DAILY_LIMIT = int(os.environ.get("TOPIC_AI_DAILY_LIMIT", "150"))
+# Keep these under the model's free limits (AI Studio > Usage), leaving room for AI exam marking.
+TOPIC_AI_DAILY_LIMIT = int(os.environ.get("TOPIC_AI_DAILY_LIMIT", "15"))
+TOPIC_AI_REQUESTS_PER_MINUTE = int(os.environ.get("TOPIC_AI_REQUESTS_PER_MINUTE", "4"))
+# Characters of a chapter per request; the default sends the whole chapter in one request.
+TOPIC_AI_CHUNK_CHARACTERS = int(os.environ.get("TOPIC_AI_CHUNK_CHARACTERS", "600000"))
 TOPIC_AI_USER_DAILY_LIMIT = int(os.environ.get("TOPIC_AI_USER_DAILY_LIMIT", "10"))
 # Optional lighter/faster model for topic search only; empty means GEMINI_MODEL.
 TOPIC_AI_MODEL = os.environ.get("TOPIC_AI_MODEL", "")
