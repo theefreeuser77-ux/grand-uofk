@@ -16,6 +16,7 @@ urlpatterns = [
     path("deck/<slug:slug>/exams/", views.deck_exams, name="deck_exams"),
     path("deck/<slug:slug>/topic/", views.topic_practice, name="topic_practice"),
     path("deck/<slug:slug>/topic/quiz/", views.topic_quiz, name="topic_quiz"),
+    path("deck/<slug:slug>/topic/ai/", views.topic_ai_search, name="topic_ai_search"),
     path("api/deck/<slug:slug>/topic-questions/", views.api_topic_questions, name="api_topic_questions"),
     path("exam-templates/<int:template_id>/start/", views.exam_template_start, name="exam_template_start"),
     path("exam-templates/<int:template_id>/edit/", views.exam_template_edit, name="exam_template_edit"),

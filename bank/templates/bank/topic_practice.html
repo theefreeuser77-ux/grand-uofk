@@ -3,7 +3,7 @@
 {% block content %}
 <p class="crumbs"><a href="{{ bank.get_absolute_url }}">← {{ bank.title }}</a></p>
 <h2 class="pagetitle">Practise one topic</h2>
-<p class="mute">Haven't covered the whole chapter yet? Let any free AI chat (ChatGPT, Gemini, Claude…) pick the questions about your topic, then practise only those.</p>
+<p class="mute">Haven't covered the whole chapter yet? Type a topic and let an AI pick the questions about it, then practise only those.</p>
 
 <div class="card topic-step">
   <h3>1. Type your topic</h3>
@@ -25,10 +25,20 @@
     {% endif %}
   </form>
   <p class="mute">{{ question_count }} question{{ question_count|pluralize }} in this chapter{% if label != "all" %} from this source{% endif %}.</p>
+  {% if ai_enabled and parts %}
+  <form method="post" action="{% url 'bank:topic_ai_search' bank.slug %}" class="topic-ai" data-topic-ai>
+    {% csrf_token %}
+    <input type="hidden" name="topic" value="{{ topic }}" data-topic-copy>
+    <input type="hidden" name="label" value="{{ label }}">
+    <button class="btn pri" data-ai-button>Find the questions with AI</button>
+    <span class="mute" data-ai-note>{{ ai_searches_left }} AI search{{ ai_searches_left|pluralize:"es" }} left for you today. Topics someone already searched in this chapter are free and instant.</span>
+  </form>
+  {% endif %}
 </div>
 
 {% if parts %}
-<div class="card topic-step">
+{% if ai_enabled %}<h3 class="topic-or" id="copy-steps">Or do it yourself in any AI chat (ChatGPT, Gemini, Claude…)</h3>{% endif %}
+<div class="card topic-step"{% if not ai_enabled %} id="copy-steps"{% endif %}>
   <h3>2. Copy the prompt into an AI chat</h3>
   {% if parts|length > 1 %}
   <p class="mute">This chapter is long, so the prompt is split into {{ parts|length }} parts. Send each part in a <b>new</b> chat and keep every reply.</p>
@@ -72,7 +82,14 @@
   const parts = [...document.querySelectorAll(".topic-part")];
   if (!input || !parts.length) return;
   const chapter = JSON.parse(document.getElementById("chapter-title").textContent);
-  const topicCopy = document.querySelector("[data-topic-copy]");
+  const topicCopies = document.querySelectorAll("[data-topic-copy]");
+  const aiForm = document.querySelector("[data-topic-ai]");
+  if (aiForm) aiForm.addEventListener("submit", event => {
+    if (!input.value.trim()) { event.preventDefault(); input.focus(); return; }
+    const button = aiForm.querySelector("[data-ai-button]");
+    button.disabled = true;
+    button.textContent = "Searching… this can take up to a minute";
+  });
 
   const promptFor = (topic, questions, part, total) => [
     `I am a medical student studying the chapter "${chapter}". Below is a list of exam questions` +
@@ -90,7 +107,9 @@
 
   function update() {
     const topic = input.value.trim();
-    topicCopy.value = topic;
+    topicCopies.forEach(field => { field.value = topic; });
+    const aiButton = document.querySelector("[data-ai-button]");
+    if (aiButton && !aiButton.disabled) aiButton.textContent = topic ? "Find the questions with AI" : "Type a topic first";
     parts.forEach(box => {
       const area = box.querySelector(".topic-prompt");
       const button = box.querySelector("[data-copy]");

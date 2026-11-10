@@ -368,6 +368,20 @@ class AIRequestQuota(models.Model):
     request_timestamps = models.JSONField(default=list)
 
 
+class TopicSearch(models.Model):
+    """An AI's answer to "which questions of this chapter are about <topic>?", kept so the
+    next student asking the same thing gets it instantly without another AI request."""
+    bank = models.ForeignKey(QuestionBank, on_delete=models.CASCADE, related_name="topic_searches")
+    label = models.CharField(max_length=20)          # question source filter used (e.g. "all", "uofk")
+    topic = models.CharField(max_length=80)          # normalised: lower case, single spaces
+    signature = models.CharField(max_length=40)      # fingerprint of the questions searched
+    question_ids = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["bank", "label", "topic"])]
+
+
 class AIExamAssessment(models.Model):
     QUEUED, PROCESSING, COMPLETED, FAILED, CANCELLED = (
         "queued", "processing", "completed", "failed", "cancelled",

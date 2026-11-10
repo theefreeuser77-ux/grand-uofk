@@ -86,7 +86,7 @@ def parse_marks(text, item_count):
     return marks
 
 
-def _gemini_generate(prompt, item_count):
+def _gemini_generate(prompt, item_count, max_output_tokens=None, timeout=25):
     api_key = getattr(settings, "GEMINI_API_KEY", "")
     if not api_key:
         raise AIMarkingUnavailable("AI marking isn't configured. Please assess your answers manually.")
@@ -99,7 +99,7 @@ def _gemini_generate(prompt, item_count):
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {
             "temperature": 0,
-            "maxOutputTokens": max(64, item_count * 8),
+            "maxOutputTokens": max_output_tokens or max(64, item_count * 8),
         },
     }
     request = Request(
@@ -109,7 +109,7 @@ def _gemini_generate(prompt, item_count):
         method="POST",
     )
     try:
-        with urlopen(request, timeout=25) as response:
+        with urlopen(request, timeout=timeout) as response:
             data = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         try:

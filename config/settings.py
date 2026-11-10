@@ -122,3 +122,6 @@ SUPABASE_STORAGE_BUCKET = os.environ.get(
 )
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+# "Practise one topic" AI search: site-wide AI requests per day (0 turns it off) and per student.
+TOPIC_AI_DAILY_LIMIT = int(os.environ.get("TOPIC_AI_DAILY_LIMIT", "150"))
+TOPIC_AI_USER_DAILY_LIMIT = int(os.environ.get("TOPIC_AI_USER_DAILY_LIMIT", "10"))

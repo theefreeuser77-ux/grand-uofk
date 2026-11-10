@@ -28,7 +28,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_http_methods, require_POST
 
 from . import parser, services, sources
-from . import ai_marking, figures
+from . import ai_marking, figures, topic_ai
 from .forms import (
     ExamTemplateForm, ImageQuestionForm, ImageUploadForm, QuestionForm, label_for_book, option_formset,
     validate_image_file,
@@ -2401,10 +2401,37 @@ def topic_practice(request, slug):
     parts = _topic_parts([_topic_line(q) for q in questions])
     return render(request, "bank/topic_practice.html", {
         "bank": bank, "parts": parts, "question_count": len(questions),
+        "ai_enabled": topic_ai.enabled(), "ai_searches_left": topic_ai.searches_left(request.user),
         "topic": request.GET.get("topic", ""), "label": label,
         "source_options": [{"key": key, "name": sources.filter_name(key, request.user)}
                            for key in sources.filters_for(request.user)],
     })
+
+
+@login_required
+@require_POST
+def topic_ai_search(request, slug):
+    bank = get_object_or_404(QuestionBank, slug=slug)
+    label = sources.normalize(request.POST.get("label", sources.ALL), request.user)
+    topic = _short(request.POST.get("topic", ""), 80)
+    back = reverse("bank:topic_practice", args=[bank.slug]) + "?" + urlencode({"topic": topic, "label": label})
+    if not topic:
+        messages.error(request, "Type a topic first.")
+        return redirect(back)
+    questions = list(_topic_pool(bank, request.user, label)
+                     .prefetch_related("options", "image_targets").order_by("id"))
+    try:
+        found, _ = topic_ai.search(bank, label, topic, [_topic_line(q) for q in questions],
+                                   [q.pk for q in questions], request.user)
+    except topic_ai.TopicSearchUnavailable as error:
+        messages.warning(request, str(error))
+        return redirect(back + "#copy-steps")
+    if not found:
+        messages.info(request, f"The AI found no questions about “{topic}” in this chapter. "
+                               "Try other words, or a broader topic.")
+        return redirect(back)
+    return redirect(reverse("bank:topic_quiz", args=[bank.slug]) + "?" + urlencode(
+        {"ids": ",".join(map(str, found)), "topic": topic, "label": label}))
 
 
 # Question types a topic quiz can be limited to: (key, name, filter, quiz.js question type).

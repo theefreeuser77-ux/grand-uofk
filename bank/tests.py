@@ -18,7 +18,7 @@ from django.utils import timezone
 from .image_storage import delete_question_image, upload_question_image
 from .models import (
     AIExamAssessment, AIRequestQuota, BackupSnapshot, Comment, ExamAttempt, ExamTemplate, ExamTemplateChapter, ImageTarget, Option, Question, QuestionBank,
-    QuestionImage, QuestionNote, SavedQuestion, Subject, SubjectSection, Book, BookChapter,
+    QuestionImage, QuestionNote, SavedQuestion, Subject, SubjectSection, Book, BookChapter, TopicSearch,
 )
 from . import full_backup
 from .subject_backup import encode_backup, validate_backup
@@ -3373,3 +3373,79 @@ class TopicPracticeTests(Base):
         data = self.client.get(reverse("bank:api_topic_questions", args=[self.deck.slug]),
                                {"ids": f"{foreign.pk},{self.ids[0]}", "type": "all"}).json()
         self.assertEqual([q["id"] for q in data["questions"]], [self.ids[0]])
+
+
+@override_settings(GEMINI_API_KEY="test-key", TOPIC_AI_DAILY_LIMIT=150, TOPIC_AI_USER_DAILY_LIMIT=2)
+class TopicAISearchTests(Base):
+    def setUp(self):
+        super().setUp()
+        from django.core.cache import cache
+        cache.clear()
+        self.deck = self.import_sample()
+        self.ids = list(self.deck.questions.order_by("id").values_list("pk", flat=True))
+        self.client.force_login(self.student)
+        self.url = reverse("bank:topic_ai_search", args=[self.deck.slug])
+
+    def search(self, topic="Anaemia"):
+        return self.client.post(self.url, {"topic": topic, "label": "all"})
+
+    def test_page_shows_ai_button_with_searches_left(self):
+        page = self.client.get(reverse("bank:topic_practice", args=[self.deck.slug]))
+        self.assertContains(page, "Find the questions with AI")
+        self.assertContains(page, "2 AI searches left for you today")
+
+    @override_settings(GEMINI_API_KEY="")
+    def test_no_ai_button_without_api_key(self):
+        page = self.client.get(reverse("bank:topic_practice", args=[self.deck.slug]))
+        self.assertNotContains(page, 'data-topic-ai>')
+        self.assertNotContains(page, "AI searches left")
+
+    def test_ai_reply_leads_to_type_choice_and_is_cached_for_everyone(self):
+        reply = f"{self.ids[0]}, {self.ids[1]}, 999999"
+        with patch("bank.ai_marking._gemini_generate", return_value=reply) as gemini:
+            response = self.search()
+            self.assertEqual(gemini.call_count, 1)
+            prompt = gemini.call_args.args[0]
+            self.assertIn('"Anaemia"', prompt)
+            self.assertIn(f"#{self.ids[0]} |", prompt)
+            self.assertIn(reverse("bank:topic_quiz", args=[self.deck.slug]), response["Location"])
+            self.assertIn(f"ids={self.ids[0]}%2C{self.ids[1]}&", response["Location"])
+            # Another student, different spacing and case: answered from the cache.
+            self.client.force_login(self.editor)
+            self.client.post(self.url, {"topic": "  anaemia ", "label": "all"})
+            self.assertEqual(gemini.call_count, 1)
+        self.assertEqual(TopicSearch.objects.count(), 1)
+
+    def test_cache_is_ignored_after_the_chapter_changes(self):
+        with patch("bank.ai_marking._gemini_generate", return_value=str(self.ids[0])) as gemini:
+            self.search()
+            Question.objects.create(bank=self.deck, kind=Question.DESC, stem="New", answer="x")
+            self.search()
+        self.assertEqual(gemini.call_count, 2)
+
+    def test_student_daily_limit_falls_back_to_copy_paste(self):
+        with patch("bank.ai_marking._gemini_generate", return_value=str(self.ids[0])) as gemini:
+            self.search("one")
+            self.search("two")
+            response = self.client.post(self.url, {"topic": "three", "label": "all"}, follow=True)
+        self.assertEqual(gemini.call_count, 2)
+        self.assertContains(response, "used your 2 AI searches for today")
+
+    @override_settings(TOPIC_AI_DAILY_LIMIT=1)
+    def test_site_daily_limit(self):
+        with patch("bank.ai_marking._gemini_generate", return_value=str(self.ids[0])):
+            self.search("one")
+            response = self.client.post(self.url, {"topic": "two", "label": "all"}, follow=True)
+        self.assertContains(response, "The AI is busy for today")
+
+    def test_ai_failure_and_empty_answer_show_messages(self):
+        from bank.ai_marking import AIMarkingUnavailable
+        with patch("bank.ai_marking._gemini_generate", side_effect=AIMarkingUnavailable("x")):
+            response = self.client.post(self.url, {"topic": "one", "label": "all"}, follow=True)
+        self.assertContains(response, "couldn&#x27;t answer right now")
+        with patch("bank.ai_marking._gemini_generate", return_value="NONE"):
+            response = self.client.post(self.url, {"topic": "two", "label": "all"}, follow=True)
+        self.assertContains(response, "found no questions about")
+
+    def test_get_is_not_allowed(self):
+        self.assertEqual(self.client.get(self.url).status_code, 405)
