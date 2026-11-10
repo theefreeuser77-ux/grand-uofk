@@ -294,6 +294,8 @@ class ExamTemplate(models.Model):
     question_count = models.PositiveSmallIntegerField()
     mix = models.JSONField(default=dict)
     time_limit_minutes = models.PositiveSmallIntegerField(null=True, blank=True)
+    # Which questions it uses, by label: a filter key from bank/sources.py ("all", "uofk", "other"…).
+    source = models.CharField(max_length=20, default="all")
     is_published = models.BooleanField(default=False)
     snapshot = models.JSONField(null=True, blank=True)
     source_attempt = models.OneToOneField(
@@ -449,3 +451,46 @@ class Comment(models.Model):
 
     def __str__(self):
         return f"Comment on Q{self.question_id}: {self.text[:40]}"
+
+
+class PushPhrase(models.Model):
+    """A short message admins write; students who allow notifications get one at random."""
+    text = models.CharField(max_length=200)
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.text
+
+
+class PushSettings(models.Model):
+    """Site-wide notification settings (a single row)."""
+    enabled = models.BooleanField(default=True)
+    interval_hours = models.DecimalField(max_digits=5, decimal_places=1, default=24)
+    title = models.CharField(max_length=60, default="Rawasi")
+
+    @classmethod
+    def load(cls):
+        return cls.objects.get_or_create(pk=1)[0]
+
+
+class PushPreference(models.Model):
+    """One student's notifications: on or off, and when their next one is due."""
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="push_preference")
+    enabled = models.BooleanField(default=False)
+    next_send_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    last_sent_at = models.DateTimeField(null=True, blank=True)
+    last_phrase = models.ForeignKey(PushPhrase, null=True, blank=True, on_delete=models.SET_NULL)
+
+
+class PushSubscription(models.Model):
+    """A browser or phone a student allowed notifications on."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="push_subscriptions")
+    endpoint = models.URLField(max_length=1000, unique=True)
+    p256dh = models.CharField(max_length=200)
+    auth = models.CharField(max_length=100)
+    created_at = models.DateTimeField(auto_now_add=True)

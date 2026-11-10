@@ -1,72 +1,36 @@
 {% extends "bank/base.html" %}
 {% load static %}
-{% block title %}Edit exam template · {{ template.name }}{% endblock %}
+{% block title %}Edit exam · {{ template.name }}{% endblock %}
 {% block content %}
-<main class="exam-page subject-exam-page">
-  <a class="mute" href="{{ cancel_url }}">← Back to templates</a>
-  <header class="exam-heading">
-    <div>
-      <p class="study-context">EDIT TEMPLATE · {% if subject %}{{ subject.name }}{% else %}{{ template.bank.title }}{% endif %}</p>
-      <h2>Edit {{ template.name }}</h2>
-      <p class="mute">Changes apply to future attempts. Any attempt already started keeps its original questions and settings.</p>
-    </div>
-  </header>
+<main class="study-page exam-hub">
+  <section class="page-hero">
+    {% include "bank/_hero_peaks.html" %}
+    <nav class="page-crumbs" aria-label="Breadcrumb">
+      <a href="{% url 'bank:home' %}">Subjects</a>
+      {% if subject %}<span aria-hidden="true">/</span><a href="{{ subject.get_absolute_url }}">{{ subject.name }}</a>
+      {% else %}<span aria-hidden="true">/</span><a href="{{ template.bank.get_absolute_url }}">{{ template.bank.title }}</a>{% endif %}
+      <span aria-hidden="true">/</span><a href="{{ cancel_url }}">Mock exams</a>
+    </nav>
+    <h2 class="page-title">Edit {{ template.name }}</h2>
+    <p class="page-lede">Changes apply to future attempts. Any attempt already started keeps its original questions and settings.</p>
+  </section>
 
-  <section class="card exam-setup {% if subject %}subject-exam-setup{% endif %}">
-    {% if form.non_field_errors %}<div class="fb error">{{ form.non_field_errors }}</div>{% endif %}
-    <form method="post" {% if subject %}id="subject-exam-form"{% endif %}>
+  <section class="exam-section">
+    {% if form.non_field_errors %}<div class="exam-alert" role="alert">{% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}</div>{% endif %}
+    <form method="post" class="exam-builder" data-exam-builder
+          {% if available_json %}data-available="{{ available_json }}"{% endif %}>
       {% csrf_token %}
-      {% for field in form.core_fields %}
-        <div class="exam-field">
-          <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-          {{ field }}
-          {% if field.help_text %}<small class="mute">{{ field.help_text }}</small>{% endif %}
-          {% for error in field.errors %}<small class="exam-error">{{ error }}</small>{% endfor %}
-        </div>
-      {% endfor %}
-      {% if form.publish_field %}
-      <div class="exam-field exam-publish-field">
-        <label for="{{ form.publish_field.id_for_label }}">{{ form.publish_field }} {{ form.publish_field.label }}</label>
-        <small class="mute">{{ form.publish_field.help_text }}</small>
-      </div>
-      {% endif %}
+      {% include "bank/_exam_source.html" %}
       {% if subject %}
-      <fieldset class="exam-chapter-picker">
-        <legend>Chapters and exam share</legend>
-        <label class="exam-semester-filter" for="exam-semester-filter">
-          <span>Filter chapter list by semester</span>
-          <select id="exam-semester-filter">
-            <option value="all">All semesters</option>
-            {% for semester in semesters %}<option value="{{ semester }}">Semester {{ semester }}</option>{% endfor %}
-          </select>
-        </label>
-        <p class="mute">Filtering only changes which chapters are visible. Your selections remain intact.</p>
-        <div class="exam-chapter-list">
-          {% for row in chapter_rows %}
-          <div class="exam-chapter-row" data-semester="{{ row.bank.semester }}">
-            <label class="exam-chapter-select">
-              {{ row.selected }}
-              <span><strong>{{ row.bank.title }}</strong><small>Semester {{ row.bank.semester }}{% if row.bank.section %} · {{ row.bank.section.name }}{% endif %}</small></span>
-            </label>
-            <label class="exam-chapter-share">
-              <span>Share %</span>
-              {{ row.percentage }}
-            </label>
-            <small class="exam-chapter-counts">MCQ {{ row.question_counts.mcq }} · T/F {{ row.question_counts.tf }} · Descriptive {{ row.question_counts.descriptive }} · Identify {{ row.question_counts.identify }}</small>
-            {% for error in row.selected.errors %}<small class="exam-error">{{ error }}</small>{% endfor %}
-            {% for error in row.percentage.errors %}<small class="exam-error">{{ error }}</small>{% endfor %}
-          </div>
-          {% empty %}
-          <p class="mute">This subject has no chapters available.</p>
-          {% endfor %}
-        </div>
-        <p class="exam-chapter-total" id="exam-chapter-total" aria-live="polite">Selected chapter share: 0%</p>
-      </fieldset>
+        {% include "bank/_exam_chapters.html" %}
+        {% include "bank/_exam_settings.html" with step=2 %}
+      {% else %}
+        {% include "bank/_exam_settings.html" %}
       {% endif %}
-      <button class="btn pri" type="submit">Save template changes</button>
-      <a class="btn" href="{{ cancel_url }}">Cancel</a>
+      {% include "bank/_exam_bar.html" with action="Save changes" busy="Saving…" %}
+      <p class="exam-cancel"><a href="{{ cancel_url }}">Cancel</a></p>
     </form>
   </section>
 </main>
 {% endblock %}
-{% block scripts %}{% if subject %}<script src="{% static 'bank/subject_exam.js' %}?v=1"></script>{% endif %}{% endblock %}
+{% block scripts %}<script src="{% static 'bank/subject_exam.js' %}?v=2"></script>{% endblock %}

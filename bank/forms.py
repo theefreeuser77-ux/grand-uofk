@@ -8,12 +8,15 @@ from .models import BookChapter, ImageTarget, Option, Question, QuestionBank, Qu
 
 
 class ExamTemplateForm(forms.Form):
-    name = forms.CharField(max_length=100, initial="My practice exam")
+    name = forms.CharField(
+        max_length=100, required=False, label="Name (optional)",
+        widget=forms.TextInput(attrs={"placeholder": "Named for you if left empty"}),
+    )
     question_count = forms.IntegerField(min_value=1, max_value=200, initial=20)
-    mcq_percent = forms.IntegerField(min_value=0, max_value=100, initial=40, label="Multiple choice (%)")
+    mcq_percent = forms.IntegerField(min_value=0, max_value=100, initial=60, label="Multiple choice (%)")
     tf_percent = forms.IntegerField(min_value=0, max_value=100, initial=20, label="True / False (%)")
     descriptive_percent = forms.IntegerField(min_value=0, max_value=100, initial=20, label="Descriptive (%)")
-    identify_percent = forms.IntegerField(min_value=0, max_value=100, initial=20, label="Identify (%)")
+    identify_percent = forms.IntegerField(min_value=0, max_value=100, initial=0, label="Identify (%)")
     time_limit_minutes = forms.IntegerField(
         min_value=1, max_value=300, required=False, label="Time limit (minutes)",
         help_text="Optional. Leave blank for an untimed exam.",
@@ -21,9 +24,14 @@ class ExamTemplateForm(forms.Form):
 
     def __init__(
         self, *args, banks=None, chapter_initials=None, show_publish=False,
-        publish_initial=False, **kwargs,
+        publish_initial=False, source_choices=None, **kwargs,
     ):
         super().__init__(*args, **kwargs)
+        # Question source (U of K only, all…): the keys this user may choose, from sources.py.
+        self.source_choices = source_choices or [(sources.ALL, "All questions")]
+        self.fields["source"] = forms.ChoiceField(
+            choices=self.source_choices, required=False, initial=sources.ALL, label="Questions from",
+        )
         self.requires_chapters = banks is not None
         self.show_publish = show_publish
         chapter_initials = chapter_initials or {}
@@ -60,11 +68,11 @@ class ExamTemplateForm(forms.Form):
                 "percentage": self[percentage_name],
             })
 
+    def clean_source(self):
+        return self.cleaned_data.get("source") or sources.ALL
+
     def clean_name(self):
-        name = self.cleaned_data["name"].strip()
-        if not name:
-            raise forms.ValidationError("Enter a name for this exam setup.")
-        return name
+        return (self.cleaned_data.get("name") or "").strip()
 
     def clean(self):
         cleaned = super().clean()
@@ -74,6 +82,14 @@ class ExamTemplateForm(forms.Form):
         if self.requires_chapters:
             selected = []
             selected_count = 0
+            chosen = [row["bank"] for row in self.chapter_rows if cleaned.get(f"chapter_{row['bank'].pk}_selected")]
+            if len(chosen) > 100:
+                raise forms.ValidationError("Choose at most 100 chapters.")
+            if chosen and all(cleaned.get(f"chapter_{bank.pk}_percentage") is None for bank in chosen):
+                # No shares given (e.g. without JavaScript): every chapter gets an equal share.
+                base, extra = divmod(100, len(chosen))
+                for index, bank in enumerate(chosen):
+                    cleaned[f"chapter_{bank.pk}_percentage"] = base + (1 if index < extra else 0)
             for row in self.chapter_rows:
                 bank = row["bank"]
                 if cleaned.get(f"chapter_{bank.pk}_selected"):

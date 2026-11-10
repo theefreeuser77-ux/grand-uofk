@@ -24,6 +24,7 @@ class SingleSessionMiddleware:
             or path == "/accounts/login"
             or path.startswith("/accounts/signup")
             or path.startswith("/api/question/") and (path.endswith(("/save/", "/comment/", "/note/")))
+            or path.startswith("/push/tick/")      # outside cron job; checks its own secret key
         )
 
         # Signup is disabled; keep the path out of the public site and return 404.
@@ -52,3 +53,20 @@ class SingleSessionMiddleware:
                 cache.set(cache_key, current_key, None)
 
         return self.get_response(request)
+
+
+class PushTickMiddleware:
+    """After page requests, let due notifications go out in the background (at most once a minute)."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        if not request.path.startswith("/" + settings.STATIC_URL.lstrip("/")):
+            from . import push
+            try:
+                push.maybe_tick()
+            except Exception:       # notifications must never break a page
+                pass
+        return response

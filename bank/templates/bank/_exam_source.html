@@ -1,0 +1,11 @@
+  {% if form.source_choices|length > 1 %}
+  <div class="exam-source exam-step">
+    <div class="exam-chips" role="radiogroup" aria-label="Questions from">
+      <span class="exam-chips-label">Questions from</span>
+      {% for key, name in form.source_choices %}
+      <label class="exam-chip"><input type="radio" name="source" value="{{ key }}" {% if form.source.value == key %}checked{% endif %}><span>{{ name }}</span></label>
+      {% endfor %}
+    </div>
+    {% for error in form.source.errors %}<small class="exam-error">{{ error }}</small>{% endfor %}
+  </div>
+  {% else %}<input type="hidden" name="source" value="{{ form.source.value|default:'all' }}">{% endif %}

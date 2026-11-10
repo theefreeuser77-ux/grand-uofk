@@ -1,0 +1,72 @@
+{% extends "bank/base.html" %}
+{% block title %}Notifications{% endblock %}
+{% block content %}
+<main class="study-page push-admin">
+  <section class="page-hero">
+    {% include "bank/_hero_peaks.html" %}
+    <nav class="page-crumbs" aria-label="Breadcrumb"><a href="{% url 'bank:settings' %}">Settings</a><span aria-hidden="true">/</span><span>Notifications</span></nav>
+    <h2 class="page-title">Notifications</h2>
+    <p class="page-lede">Write short phrases. Every student who allows notifications gets one at random, about once every {{ push_settings.interval_hours|floatformat:"-1" }} hours, each on their own schedule so they don't all arrive at once.</p>
+    <div class="page-stats">
+      <span><b>{{ students_on }}</b> student{{ students_on|pluralize }} opted in</span>
+      <span><b>{{ devices }}</b> device{{ devices|pluralize }}</span>
+      <span><b>{{ sent_today }}</b> sent in the last 24 h</span>
+      <span><b>{{ due_next_hour }}</b> due in the next hour</span>
+    </div>
+  </section>
+
+  {% if not configured %}
+  <div class="exam-alert" role="alert"><p><b>Not switched on yet.</b> The server needs the <code>VAPID_PUBLIC_KEY</code> and <code>VAPID_PRIVATE_KEY</code> environment variables. Until then students can't turn notifications on.</p></div>
+  {% endif %}
+
+  <section class="exam-section" aria-labelledby="push-settings-title">
+    <div class="study-section-heading"><div><p>SCHEDULE</p><h2 id="push-settings-title">How often</h2></div></div>
+    <form method="post" class="exam-step push-settings">
+      {% csrf_token %}<input type="hidden" name="action" value="settings">
+      <label class="exam-field" for="push-hours"><span>One notification every (hours)</span>
+        <input id="push-hours" type="number" name="interval_hours" min="0.5" max="720" step="0.5" value="{{ push_settings.interval_hours|floatformat:'-1' }}" required>
+        <small class="mute">Each student's time is shifted at random, give or take 20%.</small></label>
+      <label class="exam-field" for="push-title"><span>Notification title</span>
+        <input id="push-title" type="text" name="title" maxlength="60" value="{{ push_settings.title }}"></label>
+      <label class="exam-publish" for="push-enabled"><input id="push-enabled" type="checkbox" name="enabled" {% if push_settings.enabled %}checked{% endif %}>
+        <span><b>Send notifications</b><small>Untick to pause them for everyone.</small></span></label>
+      <div class="push-actions"><button class="exam-card-start" type="submit">Save</button></div>
+    </form>
+  </section>
+
+  <section class="exam-section" aria-labelledby="push-phrases-title">
+    <div class="study-section-heading">
+      <div><p>PHRASES</p><h2 id="push-phrases-title">What they say</h2></div>
+      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="test">
+        <button class="exam-chip-btn" type="submit">Send one to me now</button></form>
+    </div>
+    <form method="post" class="exam-step push-add">
+      {% csrf_token %}<input type="hidden" name="action" value="add">
+      <label class="exam-field" for="push-new"><span>New phrases, one per line</span>
+        <textarea id="push-new" name="phrases" rows="4" maxlength="20000" placeholder="Ten MCQs before bed? 🧠&#10;Your Gross exam won't study itself."></textarea>
+        <small class="mute">Up to 200 characters each.</small></label>
+      <div class="push-actions"><button class="exam-card-start" type="submit">Add</button></div>
+    </form>
+
+    {% if phrases %}
+    <ul class="push-phrases">
+      {% for phrase in phrases %}
+      <li class="push-phrase{% if not phrase.is_active %} is-off{% endif %}">
+        <form method="post" class="push-phrase-edit">{% csrf_token %}
+          <input type="hidden" name="action" value="edit"><input type="hidden" name="phrase" value="{{ phrase.pk }}">
+          <input type="text" name="text" value="{{ phrase.text }}" maxlength="200" aria-label="Phrase">
+          <button class="exam-link-btn" type="submit">Save</button>
+        </form>
+        <form method="post">{% csrf_token %}<input type="hidden" name="action" value="toggle"><input type="hidden" name="phrase" value="{{ phrase.pk }}">
+          <button class="exam-link-btn" type="submit">{% if phrase.is_active %}Pause{% else %}Use again{% endif %}</button></form>
+        <form method="post" onsubmit="return confirm('Delete this phrase?')">{% csrf_token %}<input type="hidden" name="action" value="delete"><input type="hidden" name="phrase" value="{{ phrase.pk }}">
+          <button class="exam-link-btn is-danger" type="submit">Delete</button></form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="exam-empty">No phrases yet. Nothing is sent until you add some.</p>
+    {% endif %}
+  </section>
+</main>
+{% endblock %}

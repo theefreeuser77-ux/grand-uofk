@@ -85,4 +85,8 @@ urlpatterns = [
     path("accounts/login/", views.SingleSessionLoginView.as_view(), name="login"),
     path("accounts/logout/", views.logout_view, name="logout"),
     path("settings/", views.user_settings, name="settings"),
+    path("push/subscribe/", views.push_subscribe, name="push_subscribe"),
+    path("push/unsubscribe/", views.push_unsubscribe, name="push_unsubscribe"),
+    path("push/admin/", views.push_admin, name="push_admin"),
+    path("push/tick/<str:key>/", views.push_tick, name="push_tick"),
 ]

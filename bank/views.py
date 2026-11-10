@@ -1,4 +1,5 @@
 import hashlib
+import hmac
 import json
 import math
 import random
@@ -19,7 +20,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Count, Max, Q
 from django.core.cache import cache
 from django.contrib.sessions.models import Session
-from django.http import FileResponse, HttpResponse, HttpResponseForbidden, JsonResponse
+from django.http import FileResponse, HttpResponse, HttpResponseForbidden, HttpResponseNotFound, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -28,7 +29,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_http_methods, require_POST
 
 from . import parser, services, sources
-from . import ai_marking, figures, topic_ai
+from . import ai_marking, figures, push, topic_ai
 from .forms import (
     ExamTemplateForm, ImageQuestionForm, ImageUploadForm, QuestionForm, label_for_book, option_formset,
     validate_image_file,
@@ -39,7 +40,7 @@ from .image_storage import (
 from .models import (
     AIExamAssessment, BackupSnapshot, Book, BookChapter, Comment, ImageTarget, Option, Question, QuestionBank, QuestionImage,
     ExamAttempt, ExamTemplate, ExamTemplateChapter, QuestionNote, SavedQuestion, Subject, SubjectSection,
-    SEMESTER_CHOICES,
+    PushPhrase, PushPreference, PushSettings, PushSubscription, SEMESTER_CHOICES,
 )
 from . import full_backup
 from .subject_backup import BackupError, restore_backup
@@ -308,10 +309,10 @@ def _quiz_context(request, **kw):
 EXAM_FORMATS = ("mcq", "tf", "descriptive", "identify")
 
 
-def _exam_questions(bank=None):
-    questions = Question.objects.filter(
+def _exam_questions(bank=None, source=sources.ALL):
+    questions = sources.apply(Question.objects.filter(
         is_in_sorting_bin=False, is_in_review_bin=False, book_chapter__isnull=True,
-    )
+    ), source)
     return questions.filter(bank=bank) if bank else questions
 
 
@@ -329,13 +330,13 @@ def _exam_format_query(question_format):
     )
 
 
-def _exam_question_counts(bank):
-    return _exam_question_counts_by_bank([bank]).get(
+def _exam_question_counts(bank, source=sources.ALL):
+    return _exam_question_counts_by_bank([bank], source).get(
         bank.pk, {question_format: 0 for question_format in EXAM_FORMATS},
     )
 
 
-def _exam_question_counts_by_bank(banks):
+def _exam_question_counts_by_bank(banks, source=sources.ALL):
     banks = list(banks)
     counts = {
         bank.pk: {question_format: 0 for question_format in EXAM_FORMATS}
@@ -349,12 +350,30 @@ def _exam_question_counts_by_bank(banks):
         )
         for question_format in EXAM_FORMATS
     }
-    for row in _exam_questions().filter(bank__in=banks).values("bank_id").annotate(**annotations):
+    for row in _exam_questions(source=source).filter(bank__in=banks).values("bank_id").annotate(**annotations):
         counts[row["bank_id"]] = {
             question_format: row[question_format]
             for question_format in EXAM_FORMATS
         }
     return counts
+
+
+def _exam_counts_by_source(banks, user):
+    """{source key: {bank pk: {type: count}}} for every question source this user may pick."""
+    return {key: _exam_question_counts_by_bank(banks, key) for key in sources.filters_for(user)}
+
+
+def _exam_source_choices(user):
+    return [(key, sources.filter_name(key, user)) for key in sources.filters_for(user)]
+
+
+def _exam_source_name(key, user):
+    """What to call a saved exam's question source; other universities stay hidden from students."""
+    if key == sources.ALL:
+        return ""
+    if key in sources.filters_for(user):
+        return sources.filter_name(key, user)
+    return "Selected questions"
 
 
 def _allocate_weighted(total, weights):
@@ -377,10 +396,75 @@ def _exam_quotas(total, mix):
     )
 
 
+EXAM_FORMAT_NAMES = {
+    "mcq": "multiple choice", "tf": "true/false", "descriptive": "descriptive", "identify": "identify",
+}
+
+
+def _plan_exam(question_count, mix, chapter_weights, available_by_chapter):
+    """How many questions of each type to take from each chapter.
+
+    The type mix is kept exactly. The chapter shares are followed as closely as the chapters'
+    questions allow: a chapter without, say, identify questions gives its place to a chapter that
+    has them, so picking a whole sub-subject never fails because one chapter lacks one type.
+    Returns (intended questions per chapter, {chapter pk: {type: count}}).
+    """
+    chapter_quotas = _allocate_weighted(
+        question_count, [(chapter.pk, percentage) for chapter, percentage in chapter_weights],
+    )
+    format_quotas = _exam_quotas(question_count, mix)
+    totals = {
+        question_format: sum(available_by_chapter[chapter.pk][question_format] for chapter, _ in chapter_weights)
+        for question_format in EXAM_FORMATS
+    }
+    short = [
+        f"{EXAM_FORMAT_NAMES[question_format]}: need {quota}, have {totals[question_format]}"
+        for question_format, quota in format_quotas.items() if quota > totals[question_format]
+    ]
+    if short:
+        where = (f"in {chapter_weights[0][0].title}" if len(chapter_weights) == 1
+                 else "in the selected chapters")
+        raise ValueError(
+            f"Not enough eligible questions {where} ({', '.join(short)}). "
+            "Lower that type's share, ask for fewer questions, or add chapters."
+        )
+    remaining = dict(chapter_quotas)
+    order = {chapter.pk: index for index, (chapter, _) in enumerate(chapter_weights)}
+    plan = {chapter.pk: {question_format: 0 for question_format in EXAM_FORMATS} for chapter, _ in chapter_weights}
+    # Scarcest types first, so they get the chapters that have them.
+    for question_format in sorted(EXAM_FORMATS, key=lambda f: totals[f] - format_quotas[f]):
+        for _ in range(format_quotas[question_format]):
+            chapter_pk = max(
+                (pk for pk in plan if plan[pk][question_format] < available_by_chapter[pk][question_format]),
+                key=lambda pk: (remaining[pk], -order[pk]),
+            )
+            plan[chapter_pk][question_format] += 1
+            remaining[chapter_pk] -= 1
+    return chapter_quotas, plan
+
+
+def _even_shares(count):
+    """Split 100% between `count` chapters as evenly as whole numbers allow."""
+    base, extra = divmod(100, count)
+    return [base + (1 if index < extra else 0) for index in range(count)]
+
+
+def _unique_template_name(user, base, **scope):
+    """`base`, or `base (2)`, `base (3)`… so a new exam never clashes with one the student saved."""
+    base = base.strip()[:100] or "Mock exam"
+    name, number = base, 2
+    while ExamTemplate.objects.filter(user=user, name=name, **scope).exists():
+        suffix = f" ({number})"
+        name, number = base[:100 - len(suffix)] + suffix, number + 1
+    return name
+
+
 def _start_exam(
     user, bank, name, question_count, mix, time_limit_minutes=None, template=None,
-    chapter_weights=None, subject=None,
+    chapter_weights=None, subject=None, source=sources.ALL,
 ):
+    if template is not None:
+        source = template.source or sources.ALL
     if chapter_weights is None:
         chapter_weights = [(bank, 100)] if bank else []
     if template and template.snapshot:
@@ -423,36 +507,19 @@ def _start_exam(
         )
     if not chapter_weights or sum(percentage for _, percentage in chapter_weights) != 100:
         raise ValueError("Chapter percentages must add up to 100%.")
-    chapter_quotas = _allocate_weighted(
-        question_count, [(chapter.pk, percentage) for chapter, percentage in chapter_weights],
-    )
     available_by_chapter = _exam_question_counts_by_bank(
-        [chapter for chapter, _ in chapter_weights],
+        [chapter for chapter, _ in chapter_weights], source,
     )
+    chapter_quotas, plan = _plan_exam(question_count, mix, chapter_weights, available_by_chapter)
     question_ids_by_format = {question_format: [] for question_format in EXAM_FORMATS}
     chapter_format_quotas = {}
     for chapter, _ in chapter_weights:
-        chapter_count = chapter_quotas[chapter.pk]
-        format_quotas = _exam_quotas(chapter_count, mix)
+        format_quotas = plan[chapter.pk]
         chapter_format_quotas[str(chapter.pk)] = format_quotas
-        available = available_by_chapter[chapter.pk]
-        unavailable = {
-            question_format: quota
-            for question_format, quota in format_quotas.items()
-            if quota > available[question_format]
-        }
-        if unavailable:
-            details = ", ".join(
-                f"{question_format}: need {quota}, have {available[question_format]}"
-                for question_format, quota in unavailable.items()
-            )
-            raise ValueError(
-                f"Not enough eligible questions in {chapter.title} for its exam allocation ({details})."
-            )
         for question_format, quota in format_quotas.items():
             if quota:
                 ids = list(
-                    _exam_questions(chapter).filter(_exam_format_query(question_format))
+                    _exam_questions(chapter, source).filter(_exam_format_query(question_format))
                     .distinct().order_by("?").values_list("pk", flat=True)[:quota]
                 )
                 question_ids_by_format[question_format].extend(ids)
@@ -474,6 +541,7 @@ def _start_exam(
         configuration={
             "question_count": question_count,
             "mix": mix,
+            "source": source,
             "time_limit_minutes": time_limit_minutes,
             "quotas": {
                 question_format: len(question_ids_by_format[question_format])
@@ -491,117 +559,204 @@ def _start_exam(
     )
 
 
-@login_required
-def deck_exams(request, slug):
-    bank = get_object_or_404(QuestionBank, slug=slug)
-    form = ExamTemplateForm(request.POST or None, show_publish=request.user.is_staff)
-    if request.method == "POST" and form.is_valid():
-        try:
-            template = ExamTemplate.objects.create(
-                user=request.user,
-                bank=bank,
-                name=form.cleaned_data["name"],
-                question_count=form.cleaned_data["question_count"],
-                mix=form.mix(),
-                time_limit_minutes=form.cleaned_data["time_limit_minutes"],
-                is_published=bool(form.cleaned_data.get("is_published")),
-            )
-        except IntegrityError:
-            form.add_error("name", "You already have an exam setup with this name for this deck.")
-        else:
-            try:
-                attempt = _start_exam(
-                    request.user, bank, template.name, template.question_count,
-                    template.mix, template.time_limit_minutes, template=template,
-                )
-            except ValueError as error:
-                template.delete()
-                form.add_error(None, str(error))
-            else:
-                return redirect("bank:exam_attempt", attempt_id=attempt.pk)
-    templates = ExamTemplate.objects.filter(bank=bank).select_related("user")
-    admin_templates = templates.filter(user__is_staff=True, is_published=True)
-    my_templates = templates.filter(user=request.user).exclude(
-        user__is_staff=True, is_published=True,
-    )
-    recent_attempts = ExamAttempt.objects.filter(user=request.user, bank=bank)[:10]
-    return render(request, "bank/deck_exams.html", {
-        "bank": bank,
-        "form": form,
+def _exam_lists(request, templates, attempts):
+    """The published, saved and recent exams shown on a mock exam page."""
+    admin_templates = list(templates.filter(user__is_staff=True, is_published=True))
+    my_templates = list(templates.filter(user=request.user).exclude(user__is_staff=True, is_published=True))
+    for template in admin_templates + my_templates:
+        template.source_name = _exam_source_name(template.source, request.user)
+    recent_attempts = list(attempts[:10])
+    return {
         "admin_templates": admin_templates,
         "my_templates": my_templates,
         "recent_attempts": recent_attempts,
+        "open_attempts": [attempt for attempt in recent_attempts if not attempt.submitted_at],
+    }
+
+
+@login_required
+def deck_exams(request, slug):
+    bank = get_object_or_404(QuestionBank.objects.select_related("subject", "section"), slug=slug)
+    form = ExamTemplateForm(
+        request.POST or None, show_publish=request.user.is_staff,
+        source_choices=_exam_source_choices(request.user),
+        initial={"source": sources.normalize(request.GET.get("label", sources.ALL), request.user)},
+    )
+    if request.method == "POST" and form.is_valid():
+        count = form.cleaned_data["question_count"]
+        name = _unique_template_name(
+            request.user, form.cleaned_data["name"] or f"{bank.title} · {count} questions", bank=bank,
+        )
+        template = ExamTemplate.objects.create(
+            user=request.user,
+            bank=bank,
+            name=name,
+            question_count=count,
+            mix=form.mix(),
+            source=form.cleaned_data["source"],
+            time_limit_minutes=form.cleaned_data["time_limit_minutes"],
+            is_published=bool(form.cleaned_data.get("is_published")),
+        )
+        try:
+            attempt = _start_exam(
+                request.user, bank, template.name, template.question_count,
+                template.mix, template.time_limit_minutes, template=template,
+            )
+        except ValueError as error:
+            template.delete()
+            form.add_error(None, str(error))
+        else:
+            return redirect("bank:exam_attempt", attempt_id=attempt.pk)
+    templates = ExamTemplate.objects.filter(bank=bank).select_related("user")
+    return render(request, "bank/deck_exams.html", {
+        "bank": bank,
+        "form": form,
         "question_counts": _exam_question_counts(bank),
+        "available_json": json.dumps({
+            key: counts[bank.pk] for key, counts in _exam_counts_by_source([bank], request.user).items()
+        }),
+        **_exam_lists(request, templates, ExamAttempt.objects.filter(user=request.user, bank=bank)),
     })
+
+
+def _exam_chapter_rows(form, banks, user):
+    """The form's chapter rows with their question counts for every question source (for the
+    live "available" numbers) and for the source currently chosen."""
+    by_source = _exam_counts_by_source(banks or [], user)
+    source = form["source"].value() or sources.ALL
+    source = source if source in by_source else sources.ALL
+    rows = []
+    for row in form.chapter_rows:
+        pk = row["bank"].pk
+        row["question_counts"] = by_source[source][pk]
+        row["total"] = sum(row["question_counts"].values())
+        row["counts_json"] = json.dumps({key: counts[pk] for key, counts in by_source.items()})
+        rows.append(row)
+    return rows
+
+
+def _exam_chapter_groups(subject, rows):
+    """Chapters grouped by sub-subject (or by semester when the subject has none)."""
+    sections = list(subject.sections.all())
+    groups = []
+    if sections:
+        by_section = {section.pk: [] for section in sections}
+        other = []
+        for row in rows:
+            by_section.get(row["bank"].section_id, other).append(row)
+        groups = [
+            {"key": f"section-{section.slug}", "name": section.name, "rows": by_section[section.pk]}
+            for section in sections if by_section[section.pk]
+        ]
+        if other:
+            groups.append({"key": "other", "name": "Other chapters", "rows": other})
+    else:
+        for row in rows:
+            semester = row["bank"].semester
+            if not groups or groups[-1]["semester"] != semester:
+                groups.append({"key": f"semester-{semester}", "name": f"Semester {semester}",
+                               "semester": semester, "rows": []})
+            groups[-1]["rows"].append(row)
+    for group in groups:
+        group["multi_semester"] = len({row["bank"].semester for row in group["rows"]}) > 1
+        group["questions"] = sum(row["total"] for row in group["rows"])
+    return groups
+
+
+def _exam_preselection(request, banks):
+    """`?section=gross`, `?semester=2` or `?chapter=<slug>` tick those chapters with equal shares."""
+    section, semester, chapter = (request.GET.get(key, "") for key in ("section", "semester", "chapter"))
+    if not (section or semester or chapter):
+        return {}
+    picked = [
+        bank for bank in banks
+        if (not section or (bank.section_id and bank.section.slug == section))
+        and (not semester or str(bank.semester) == semester)
+        and (not chapter or bank.slug == chapter)
+    ]
+    if not picked or len(picked) > 100:
+        return {}
+    return {bank.pk: share for bank, share in zip(picked, _even_shares(len(picked)))}
+
+
+def _subject_exam_name(subject, weights, groups, question_count):
+    picked = {bank.pk for bank, _ in weights}
+    every = {row["bank"].pk for group in groups for row in group["rows"]}
+    whole = [group for group in groups if {row["bank"].pk for row in group["rows"]} <= picked]
+    covered = {row["bank"].pk for group in whole for row in group["rows"]}
+    if len(picked) == 1:
+        base = weights[0][0].title
+    elif whole and covered == picked and len(whole) <= 3:
+        base = " + ".join(group["name"] for group in whole)
+    elif picked == every:
+        base = f"{subject.name} – all chapters"
+    else:
+        base = f"{subject.name} – {len(picked)} chapters"
+    return f"{base} · {question_count} questions"
 
 
 @login_required
 def subject_exams(request, slug):
     subject = get_object_or_404(Subject, slug=slug)
     banks = list(subject.decks.select_related("section").order_by("semester", "title"))
-    form = ExamTemplateForm(request.POST or None, banks=banks, show_publish=request.user.is_staff)
-    counts_by_bank = _exam_question_counts_by_bank(banks)
+    form = ExamTemplateForm(
+        request.POST or None, banks=banks, show_publish=request.user.is_staff,
+        chapter_initials=None if request.method == "POST" else _exam_preselection(request, banks),
+        source_choices=_exam_source_choices(request.user),
+        initial={"source": sources.normalize(request.GET.get("label", sources.ALL), request.user)},
+    )
+    chapter_rows = _exam_chapter_rows(form, banks, request.user)
+    groups = _exam_chapter_groups(subject, chapter_rows)
     if request.method == "POST" and form.is_valid():
-        template = None
-        try:
+        weights = form.chapter_weights()
+        count = form.cleaned_data["question_count"]
+        name = _unique_template_name(
+            request.user,
+            form.cleaned_data["name"] or _subject_exam_name(subject, weights, groups, count),
+            subject=subject,
+        )
+        with transaction.atomic():
             template = ExamTemplate.objects.create(
                 user=request.user,
                 subject=subject,
-                name=form.cleaned_data["name"],
-                question_count=form.cleaned_data["question_count"],
+                name=name,
+                question_count=count,
                 mix=form.mix(),
+                source=form.cleaned_data["source"],
                 time_limit_minutes=form.cleaned_data["time_limit_minutes"],
                 is_published=bool(form.cleaned_data.get("is_published")),
             )
             ExamTemplateChapter.objects.bulk_create([
                 ExamTemplateChapter(template=template, bank=bank, percentage=percentage)
-                for bank, percentage in form.chapter_weights()
+                for bank, percentage in weights
             ])
-        except IntegrityError:
-            if template:
-                template.delete()
-            form.add_error("name", "You already have an exam setup with this name for this subject.")
+        try:
+            attempt = _start_exam(
+                request.user, weights[0][0], template.name, template.question_count,
+                template.mix, template.time_limit_minutes, template=template,
+                chapter_weights=weights, subject=subject,
+            )
+        except ValueError as error:
+            template.delete()
+            form.add_error(None, str(error))
         else:
-            try:
-                weights = form.chapter_weights()
-                attempt = _start_exam(
-                    request.user, weights[0][0], template.name, template.question_count,
-                    template.mix, template.time_limit_minutes, template=template,
-                    chapter_weights=weights, subject=subject,
-                )
-            except ValueError as error:
-                template.delete()
-                form.add_error(None, str(error))
-            else:
-                return redirect("bank:exam_attempt", attempt_id=attempt.pk)
-    chapter_rows = []
-    for row in form.chapter_rows:
-        row["question_counts"] = counts_by_bank[row["bank"].pk]
-        chapter_rows.append(row)
+            return redirect("bank:exam_attempt", attempt_id=attempt.pk)
     templates = ExamTemplate.objects.filter(subject=subject).select_related("user").prefetch_related(
         "chapters__bank",
     )
-    admin_templates = templates.filter(user__is_staff=True, is_published=True)
-    my_templates = templates.filter(user=request.user).exclude(
-        user__is_staff=True, is_published=True,
-    )
-    recent_attempts = ExamAttempt.objects.filter(user=request.user).filter(
+    attempts = ExamAttempt.objects.filter(user=request.user).filter(
         Q(subject=subject) | Q(bank__subject=subject)
-    )[:10]
+    )
+    data = request.POST if request.method == "POST" else request.GET
     return render(request, "bank/subject_exams.html", {
         "subject": subject,
         "form": form,
-        "chapter_rows": chapter_rows,
+        "chapter_groups": groups,
+        "chapter_count": len(chapter_rows),
         "semesters": sorted({bank.semester for bank in banks}),
-        "question_counts": {
-            question_format: sum(
-                row["question_counts"][question_format] for row in chapter_rows
-            )
-            for question_format in EXAM_FORMATS
-        },
-        "admin_templates": admin_templates,
-        "my_templates": my_templates,
-        "recent_attempts": recent_attempts,
+        "start_semester": data.get("semester", ""),
+        "share_mode": data.get("share_mode", "even"),
+        **_exam_lists(request, templates, attempts),
     })
 
 
@@ -753,6 +908,7 @@ def exam_template_edit(request, template_id):
         "descriptive_percent": template.mix.get("descriptive", 20),
         "identify_percent": template.mix.get("identify", 20),
         "time_limit_minutes": template.time_limit_minutes,
+        "source": template.source,
     }
     form = ExamTemplateForm(
         request.POST or None,
@@ -761,13 +917,17 @@ def exam_template_edit(request, template_id):
         show_publish=request.user.is_staff,
         chapter_initials=chapter_initials,
         publish_initial=template.is_published,
+        source_choices=_exam_source_choices(request.user) + (
+            [] if template.source in sources.filters_for(request.user)
+            else [(template.source, "Selected questions")]),
     )
     if request.method == "POST" and form.is_valid():
         try:
             with transaction.atomic():
-                template.name = form.cleaned_data["name"]
+                template.name = form.cleaned_data["name"] or template.name
                 template.question_count = form.cleaned_data["question_count"]
                 template.mix = form.mix()
+                template.source = form.cleaned_data["source"]
                 template.time_limit_minutes = form.cleaned_data["time_limit_minutes"]
                 if request.user.is_staff:
                     template.is_published = bool(form.cleaned_data.get("is_published"))
@@ -785,17 +945,21 @@ def exam_template_edit(request, template_id):
             destination = "bank:subject_exams" if subject else "bank:deck_exams"
             slug = subject.slug if subject else template.bank.slug
             return redirect(destination, slug=slug)
-    chapter_rows = []
-    counts_by_bank = _exam_question_counts_by_bank(banks or [])
-    for row in form.chapter_rows:
-        row["question_counts"] = counts_by_bank[row["bank"].pk]
-        chapter_rows.append(row)
+    chapter_rows = _exam_chapter_rows(form, banks, request.user)
     return render(request, "bank/exam_template_edit.html", {
         "template": template,
         "subject": subject,
         "form": form,
-        "chapter_rows": chapter_rows,
+        "chapter_groups": _exam_chapter_groups(subject, chapter_rows) if subject else [],
+        "chapter_count": len(chapter_rows),
         "semesters": sorted({bank.semester for bank in banks or []}),
+        "start_semester": request.POST.get("semester", ""),
+        "share_mode": request.POST.get("share_mode", "custom"),
+        "question_counts": _exam_question_counts(template.bank, template.source) if template.bank_id else None,
+        "available_json": json.dumps({
+            key: counts[template.bank_id]
+            for key, counts in _exam_counts_by_source([template.bank], request.user).items()
+        }) if template.bank_id else "",
         "cancel_url": (
             reverse("bank:subject_exams", args=[subject.slug])
             if subject else reverse("bank:deck_exams", args=[template.bank.slug])
@@ -2578,10 +2742,106 @@ def user_settings(request):
             return redirect("bank:settings")
     user = request.user
     role = "Admin" if user.is_staff else "Editor" if user.has_perm("bank.change_question") else "Student"
+    pref = PushPreference.objects.filter(user=user).first()
     return render(request, "bank/settings.html", {
         "password_form": password_form,
         "role": role,
         "password_open": password_form.is_bound,
+        "push_ready": push.configured() and PushSettings.load().enabled,
+        "push_on": bool(pref and pref.enabled),
+        "vapid_public_key": settings.VAPID_PUBLIC_KEY,
+    })
+
+
+# ---------------------------------------------------------------- notifications
+@login_required
+@require_POST
+def push_subscribe(request):
+    if not push.configured():
+        return JsonResponse({"error": "Notifications are not set up on this site."}, status=503)
+    try:
+        push.subscribe(request.user, json.loads(request.body or b"{}"))
+    except (ValueError, AttributeError, TypeError):
+        return JsonResponse({"error": "That subscription is not valid."}, status=400)
+    return JsonResponse({"ok": True})
+
+
+@login_required
+@require_POST
+def push_unsubscribe(request):
+    try:
+        endpoint = str(json.loads(request.body or b"{}").get("endpoint", ""))
+    except (ValueError, AttributeError):
+        endpoint = ""
+    push.unsubscribe(request.user, endpoint)
+    return JsonResponse({"ok": True})
+
+
+def push_tick(request, key):
+    """For an outside cron job (e.g. every 5 minutes), so notifications go out when the site is quiet."""
+    expected = settings.PUSH_TICK_KEY
+    if not expected or not hmac.compare_digest(key, expected):
+        return HttpResponseNotFound()
+    return JsonResponse({"sent": push.send_due()})
+
+
+@staff_member_required
+def push_admin(request):
+    push_settings = PushSettings.load()
+    if request.method == "POST":
+        action = request.POST.get("action")
+        if action == "settings":
+            try:
+                hours = round(float(request.POST.get("interval_hours", "")), 1)
+            except ValueError:
+                hours = 0
+            if not 0.5 <= hours <= 720:
+                messages.error(request, "Choose between 0.5 and 720 hours.")
+            else:
+                changed = float(push_settings.interval_hours) != hours
+                push_settings.interval_hours = hours
+                push_settings.enabled = request.POST.get("enabled") == "on"
+                push_settings.title = (request.POST.get("title") or "").strip()[:60] or "Rawasi"
+                push_settings.save()
+                if changed:
+                    push.reschedule_everyone(push_settings)
+                messages.success(request, "Notification settings saved.")
+        elif action == "add":
+            lines = [line.strip()[:200] for line in request.POST.get("phrases", "").splitlines() if line.strip()]
+            PushPhrase.objects.bulk_create([PushPhrase(text=line, created_by=request.user) for line in lines])
+            messages.success(request, f"Added {len(lines)} phrase{'s' if len(lines) != 1 else ''}." if lines
+                             else "Write at least one phrase.")
+        elif action in ("toggle", "delete", "edit"):
+            phrase = get_object_or_404(PushPhrase, pk=request.POST.get("phrase"))
+            if action == "toggle":
+                phrase.is_active = not phrase.is_active
+                phrase.save(update_fields=["is_active"])
+            elif action == "delete":
+                phrase.delete()
+            elif (request.POST.get("text") or "").strip():
+                phrase.text = request.POST["text"].strip()[:200]
+                phrase.save(update_fields=["text"])
+        elif action == "test":
+            phrase = push.pick_phrase()
+            if not push.configured():
+                messages.error(request, "Notifications are not set up yet (the VAPID keys are missing on the server).")
+            elif not phrase:
+                messages.error(request, "Add a phrase first.")
+            elif push.send_to_user(request.user, phrase[1], push_settings.title):
+                messages.success(request, "Sent. It should appear on your devices in a few seconds.")
+            else:
+                messages.error(request, "None of your devices allow notifications yet. Switch them on in Settings first.")
+        return redirect("bank:push_admin")
+    prefs = PushPreference.objects.filter(enabled=True)
+    now = timezone.now()
+    return render(request, "bank/push_admin.html", {
+        "push_settings": push_settings,
+        "phrases": PushPhrase.objects.all(),
+        "configured": push.configured(),
+        "students_on": prefs.count(),
+        "devices": PushSubscription.objects.count(),
+        "sent_today": PushPreference.objects.filter(last_sent_at__gte=now - timedelta(days=1)).count(),
+        "due_next_hour": prefs.filter(next_send_at__lte=now + timedelta(hours=1)).count(),
     })
 
 

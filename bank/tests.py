@@ -1500,7 +1500,7 @@ class MockExamTests(Base):
     def test_deck_form_saves_a_reusable_template_and_starts_an_attempt(self):
         response = self.client.get(reverse("bank:deck_exams", args=[self.deck.slug]))
         self.assertContains(response, "Mock exams")
-        self.assertContains(response, "Available questions")
+        self.assertContains(response, "Set up a new exam")
         started = self.client.post(reverse("bank:deck_exams", args=[self.deck.slug]), {
             "name": "My timed test",
             "question_count": 4,
@@ -1561,11 +1561,11 @@ class MockExamTests(Base):
         self.client.force_login(self.student)
         page = self.client.get(reverse("bank:deck_exams", args=[self.deck.slug]))
         self.assertContains(page, "Official deck exam")
-        self.assertContains(page, "Admin templates")
-        self.assertContains(page, "My templates")
-        self.assertLess(page.content.index(b"Admin templates"), page.content.index(b"My templates"))
-        self.assertLess(page.content.index(b"My templates"), page.content.index(b"Recent exam attempts"))
-        self.assertLess(page.content.index(b"Recent exam attempts"), page.content.index(b"Set up a new template"))
+        self.assertContains(page, "Ready-made exams")
+        self.assertContains(page, "My saved exams")
+        self.assertLess(page.content.index(b"Ready-made exams"), page.content.index(b"Set up a new exam"))
+        self.assertLess(page.content.index(b"Set up a new exam"), page.content.index(b"My saved exams"))
+        self.assertLess(page.content.index(b"My saved exams"), page.content.index(b"Recent exam attempts"))
         self.assertEqual(
             self.client.get(reverse("bank:exam_template_edit", args=[template.pk])).status_code,
             404,
@@ -1604,7 +1604,7 @@ class MockExamTests(Base):
         )
         self.client.force_login(self.student)
         response = self.client.get(reverse("bank:subject_exams", args=[self.subject.slug]))
-        self.assertContains(response, "Filter chapter list by semester")
+        self.assertContains(response, 'aria-label="Show chapters of semester"')
         self.assertContains(response, 'data-semester="1"')
         self.assertContains(response, 'data-semester="2"')
 
@@ -1940,6 +1940,81 @@ class MockExamTests(Base):
         self.assertEqual(deleted.url, reverse("bank:deck_exams", args=[self.deck.slug]))
         self.assertFalse(ExamAttempt.objects.filter(pk=attempt.pk).exists())
 
+    def make_section_decks(self):
+        """A sub-subject "Gross" with two chapters; only the first has identify questions."""
+        section = SubjectSection.objects.create(subject=self.subject, name="Gross")
+        self.deck.section = section
+        self.deck.save(update_fields=["section"])
+        second = self.import_sample(title="Thorax", semester=1)
+        second.section = section
+        second.save(update_fields=["section"])
+        self.client.force_login(self.student)       # import_sample logs the client out
+        return section, second
+
+    def test_whole_sub_subject_with_equal_shares_and_automatic_name(self):
+        section, second = self.make_section_decks()
+        page = self.client.get(reverse("bank:subject_exams", args=[self.subject.slug]) + "?section=gross")
+        self.assertContains(page, f'id="id_chapter_{self.deck.pk}_selected" checked')
+        self.assertContains(page, f'id="id_chapter_{second.pk}_selected" checked')
+        self.assertContains(page, "<b>Gross</b>", html=False)
+        # No shares and no name sent: equal shares, and the exam is named after the sub-subject.
+        # The second chapter has no identify question, so its place goes to the first one.
+        started = self.client.post(reverse("bank:subject_exams", args=[self.subject.slug]), {
+            "question_count": 4, "mcq_percent": 25, "tf_percent": 25,
+            "descriptive_percent": 25, "identify_percent": 25, "time_limit_minutes": "",
+            f"chapter_{self.deck.pk}_selected": "on", f"chapter_{second.pk}_selected": "on",
+        })
+        self.assertEqual(started.status_code, 302)
+        template = ExamTemplate.objects.get(user=self.student, subject=self.subject)
+        self.assertEqual(template.name, "Gross · 4 questions")
+        self.assertEqual(set(template.chapters.values_list("percentage", flat=True)), {50})
+        attempt = template.attempts.get()
+        self.assertIn(self.identify.pk, attempt.question_ids)
+        self.assertEqual(len(attempt.question_ids), 4)
+        # Starting the same setup again gets its own name instead of an error.
+        again = self.client.post(reverse("bank:subject_exams", args=[self.subject.slug]), {
+            "question_count": 4, "mcq_percent": 25, "tf_percent": 25,
+            "descriptive_percent": 25, "identify_percent": 25, "time_limit_minutes": "",
+            f"chapter_{self.deck.pk}_selected": "on", f"chapter_{second.pk}_selected": "on",
+        })
+        self.assertEqual(again.status_code, 302)
+        self.assertTrue(ExamTemplate.objects.filter(name="Gross · 4 questions (2)").exists())
+
+    def test_section_page_links_to_its_mock_exam(self):
+        section, _ = self.make_section_decks()
+        page = self.client.get(section.get_absolute_url())
+        self.assertContains(page, reverse("bank:subject_exams", args=[self.subject.slug]) + "?section=gross")
+
+    def test_question_source_limits_exam_questions(self):
+        Question.objects.filter(pk__in=[self.mcq.pk, self.tf.pk]).update(label="U of K")
+        other_mcq = Question.objects.create(bank=self.deck, kind=Question.MCQ, stem="Other MCQ", label="Gezira")
+        Option.objects.create(question=other_mcq, text="A", is_correct=True, order=0)
+        page = self.client.get(reverse("bank:deck_exams", args=[self.deck.slug]))
+        self.assertContains(page, "U of K only")
+        started = self.client.post(reverse("bank:deck_exams", args=[self.deck.slug]), {
+            "source": "uofk", "question_count": 2, "mcq_percent": 50, "tf_percent": 50,
+            "descriptive_percent": 0, "identify_percent": 0, "time_limit_minutes": "",
+        })
+        self.assertEqual(started.status_code, 302)
+        template = ExamTemplate.objects.get(user=self.student, bank=self.deck)
+        self.assertEqual(template.source, "uofk")
+        attempt = template.attempts.get()
+        self.assertEqual(set(attempt.question_ids), {self.mcq.pk, self.tf.pk})
+        self.assertEqual(attempt.configuration["source"], "uofk")
+        # Two U of K multiple-choice questions are not there, so it explains instead of starting.
+        refused = self.client.post(reverse("bank:deck_exams", args=[self.deck.slug]), {
+            "source": "uofk", "question_count": 2, "mcq_percent": 100, "tf_percent": 0,
+            "descriptive_percent": 0, "identify_percent": 0, "time_limit_minutes": "",
+        })
+        self.assertContains(refused, "Not enough eligible questions")
+        # Students can't pick another university's questions.
+        hidden = self.client.post(reverse("bank:deck_exams", args=[self.deck.slug]), {
+            "source": "gezira", "question_count": 1, "mcq_percent": 100, "tf_percent": 0,
+            "descriptive_percent": 0, "identify_percent": 0, "time_limit_minutes": "",
+        })
+        self.assertEqual(hidden.status_code, 200)
+        self.assertEqual(ExamTemplate.objects.filter(source="gezira").count(), 0)
+
 
 def _start_exam_for_test(template):
     from .views import _start_exam
@@ -1947,6 +2022,8 @@ def _start_exam_for_test(template):
         template.user, template.bank, template.name, template.question_count,
         template.mix, template.time_limit_minutes, template=template,
     )
+
+
 
 
 class SavedTests(Base):
@@ -3518,3 +3595,88 @@ class TopicAIRequestTests(Base):
         with patch("bank.ai_marking._gemini_generate", return_value="NONE") as gemini:
             self.client.post(self.url, {"topic": "one", "label": "all"})
         self.assertEqual(gemini.call_args.kwargs["model"], "light-model")
+
+
+PUSH_KEYS = {"VAPID_PUBLIC_KEY": "pub", "VAPID_PRIVATE_KEY": "priv", "VAPID_SUBJECT": "mailto:x@example.com",
+             "PUSH_BACKGROUND_TICKS": False}
+SUBSCRIPTION = {"endpoint": "https://push.example.com/abc", "keys": {"p256dh": "key", "auth": "secret"}}
+
+
+@override_settings(**PUSH_KEYS)
+class PushNotificationTests(Base):
+    def setUp(self):
+        super().setUp()
+        from .models import PushPhrase, PushSettings
+        PushSettings.objects.create(pk=1, interval_hours=6)
+        PushPhrase.objects.create(text="Study one chapter today")
+        PushPhrase.objects.create(text="Ten MCQs before bed")
+
+    def subscribe(self, user=None):
+        self.client.force_login(user or self.student)
+        return self.client.post(reverse("bank:push_subscribe"), json.dumps(SUBSCRIPTION), content_type="application/json")
+
+    def test_settings_page_offers_notifications_and_subscribing_schedules_within_interval(self):
+        from .models import PushPreference
+        self.client.force_login(self.student)
+        self.assertContains(self.client.get(reverse("bank:settings")), "Allow notifications")
+        self.assertEqual(self.subscribe().status_code, 200)
+        pref = PushPreference.objects.get(user=self.student)
+        self.assertTrue(pref.enabled)
+        wait = pref.next_send_at - timezone.now()
+        self.assertTrue(timedelta(0) < wait <= timedelta(hours=6))
+
+    def test_due_students_get_a_random_phrase_and_a_new_scattered_time(self):
+        from . import push
+        from .models import PushPreference
+        self.subscribe()
+        PushPreference.objects.filter(user=self.student).update(next_send_at=timezone.now() - timedelta(minutes=1))
+        with patch("pywebpush.webpush") as send:
+            self.assertEqual(push.send_due(), 1)
+            self.assertEqual(push.send_due(), 0)          # not due again yet
+        body = json.loads(send.call_args.kwargs["data"])["body"]
+        self.assertIn(body, {"Study one chapter today", "Ten MCQs before bed"})
+        pref = PushPreference.objects.get(user=self.student)
+        wait = pref.next_send_at - timezone.now()
+        self.assertTrue(timedelta(hours=4.7) < wait < timedelta(hours=7.3))
+        # The next phrase is a different one.
+        self.assertEqual(push.pick_phrase(pref.last_phrase_id)[1], ({"Study one chapter today", "Ten MCQs before bed"} - {body}).pop())
+
+    def test_gone_devices_are_removed_and_the_student_switched_off(self):
+        from pywebpush import WebPushException
+        from . import push
+        from .models import PushPreference, PushSubscription
+        self.subscribe()
+        PushPreference.objects.filter(user=self.student).update(next_send_at=timezone.now())
+        gone = WebPushException("gone", response=type("R", (), {"status_code": 410})())
+        with patch("pywebpush.webpush", side_effect=gone):
+            push.send_due()
+        self.assertFalse(PushSubscription.objects.exists())
+        self.assertFalse(PushPreference.objects.get(user=self.student).enabled)
+
+    def test_unsubscribe_turns_it_off(self):
+        from .models import PushPreference
+        self.subscribe()
+        self.client.post(reverse("bank:push_unsubscribe"), json.dumps({"endpoint": SUBSCRIPTION["endpoint"]}),
+                         content_type="application/json")
+        self.assertFalse(PushPreference.objects.get(user=self.student).enabled)
+
+    def test_admin_writes_phrases_and_sets_interval_which_respreads_everyone(self):
+        from .models import PushPhrase, PushPreference, PushSettings
+        self.subscribe()
+        self.assertEqual(self.client.get(reverse("bank:push_admin")).status_code, 302)   # students can't
+        admin = User.objects.create_superuser("push-admin", "a@example.com", "pw")
+        self.client.force_login(admin)
+        self.assertContains(self.client.get(reverse("bank:push_admin")), "What they say")
+        self.client.post(reverse("bank:push_admin"), {"action": "add", "phrases": "One\n\nTwo  "})
+        self.assertTrue(PushPhrase.objects.filter(text="Two").exists())
+        self.client.post(reverse("bank:push_admin"), {"action": "settings", "interval_hours": "2", "enabled": "on", "title": "Rawasi"})
+        self.assertEqual(float(PushSettings.load().interval_hours), 2)
+        wait = PushPreference.objects.get(user=self.student).next_send_at - timezone.now()
+        self.assertTrue(wait <= timedelta(hours=2))
+
+    @override_settings(PUSH_TICK_KEY="s3cret")
+    def test_tick_url_needs_the_secret(self):
+        self.client.logout()
+        self.assertEqual(self.client.get("/push/tick/wrong/").status_code, 404)
+        with patch("bank.push.send_due", return_value=0):
+            self.assertEqual(self.client.get("/push/tick/s3cret/").json(), {"sent": 0})

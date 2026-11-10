@@ -32,3 +32,26 @@ self.addEventListener("fetch", event => {
     }
   })());
 });
+
+// Notifications with the admins' phrases (see bank/push.py).
+self.addEventListener("push", event => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (error) { data = {body: event.data && event.data.text()}; }
+  event.waitUntil(self.registration.showNotification(data.title || "Rawasi", {
+    body: data.body || "",
+    icon: "/static/bank/icons/app-101-192.png",
+    badge: "/static/bank/icons/app-101-192.png",
+    data: {url: data.url || "/"},
+  }));
+});
+
+self.addEventListener("notificationclick", event => {
+  event.notification.close();
+  const url = new URL((event.notification.data && event.notification.data.url) || "/", self.location.origin).href;
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({type: "window", includeUncontrolled: true});
+    const open = windows.find(client => client.url.startsWith(self.location.origin));
+    if (open) { await open.focus(); return open.navigate ? open.navigate(url).catch(() => {}) : null; }
+    return self.clients.openWindow(url);
+  })());
+});

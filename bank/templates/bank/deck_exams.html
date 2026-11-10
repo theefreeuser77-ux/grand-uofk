@@ -1,97 +1,43 @@
 {% extends "bank/base.html" %}
+{% load static %}
 {% block title %}Mock exams · {{ bank.title }}{% endblock %}
 {% block content %}
-<main class="exam-page">
-  <a class="mute" href="{{ bank.get_absolute_url }}">← Back to {{ bank.title }}</a>
-  <header class="exam-heading">
-    <div>
-      <p class="study-context">SELF-STUDY · {{ bank.title }}</p>
-      <h2>Mock exams</h2>
-      <p class="mute">Choose a published exam, reuse one of your templates, or build a new setup.</p>
+<main class="study-page exam-hub">
+  <section class="page-hero">
+    {% include "bank/_hero_peaks.html" %}
+    <nav class="page-crumbs" aria-label="Breadcrumb">
+      <a href="{% url 'bank:home' %}">Subjects</a>
+      {% if bank.subject %}<span aria-hidden="true">/</span><a href="{{ bank.subject.get_absolute_url }}">{{ bank.subject.name }}</a>{% endif %}
+      {% if bank.section %}<span aria-hidden="true">/</span><a href="{{ bank.section.get_absolute_url }}">{{ bank.section.name }}</a>{% endif %}
+      <span aria-hidden="true">/</span><a href="{{ bank.get_absolute_url }}">{{ bank.title }}</a>
+    </nav>
+    <h2 class="page-title">Mock exams</h2>
+    <p class="page-lede">An exam on {{ bank.title }} only. Every exam you start is saved so you can retake it.</p>
+    {% if bank.subject %}
+    <div class="page-hero-ctas">
+      <a class="page-hero-cta" href="{% url 'bank:subject_exams' bank.subject.slug %}?chapter={{ bank.slug }}#build">Mix with other chapters <span aria-hidden="true">→</span></a>
     </div>
-  </header>
-
-  <section class="exam-templates">
-    <div class="study-section-heading"><div><p>READY TO TAKE</p><h2>Admin templates</h2></div></div>
-    {% for template in admin_templates %}
-      <article class="card exam-template">
-        <div>
-          <h3>{{ template.name }}</h3>
-          <p class="mute">Published by {{ template.user.username }} · {{ template.question_count }} questions · MCQ {{ template.mix.mcq }}% · T/F {{ template.mix.tf }}% · Descriptive {{ template.mix.descriptive }}% · Identify {{ template.mix.identify }}%{% if template.time_limit_minutes %} · {{ template.time_limit_minutes }} min{% else %} · untimed{% endif %}</p>
-        </div>
-        <div class="exam-template-actions">
-          {% if template.user_id == user.pk %}<a class="btn" href="{% url 'bank:exam_template_edit' template.pk %}">Edit</a>{% endif %}
-          <form method="post" action="{% url 'bank:exam_template_start' template.pk %}">{% csrf_token %}<button class="btn pri" type="submit">Start</button></form>
-        </div>
-      </article>
-    {% empty %}
-      <p class="mute">No published exam templates for this deck yet.</p>
-    {% endfor %}
+    {% endif %}
   </section>
 
-  <section class="exam-templates">
-    <div class="study-section-heading"><div><p>SAVED BY YOU</p><h2>My templates</h2></div></div>
-    {% for template in my_templates %}
-      <article class="card exam-template">
-        <div>
-          <h3>{{ template.name }}</h3>
-          {% if template.snapshot %}<span class="exam-published-badge">Saved question set</span>{% endif %}
-          {% if template.is_published %}<span class="exam-published-badge">Published</span>{% endif %}
-          <p class="mute">{{ template.question_count }} questions · MCQ {{ template.mix.mcq }}% · T/F {{ template.mix.tf }}% · Descriptive {{ template.mix.descriptive }}% · Identify {{ template.mix.identify }}%{% if template.time_limit_minutes %} · {{ template.time_limit_minutes }} min{% else %} · untimed{% endif %}</p>
-        </div>
-        <div class="exam-template-actions">
-          {% if not template.snapshot %}<a class="btn" href="{% url 'bank:exam_template_edit' template.pk %}">Edit</a>{% endif %}
-          <form method="post" action="{% url 'bank:exam_template_start' template.pk %}">{% csrf_token %}<button class="btn pri" type="submit">Start</button></form>
-          <form method="post" action="{% url 'bank:exam_template_delete' template.pk %}" onsubmit="return confirm('Delete this saved exam setup?')">{% csrf_token %}<button class="btn" type="submit">Delete</button></form>
-        </div>
-      </article>
-    {% empty %}
-      <p class="mute">Your exam templates will appear here.</p>
-    {% endfor %}
-  </section>
+  {% include "bank/_exam_lists.html" with part="continue" %}
+  {% include "bank/_exam_lists.html" with part="ready" %}
 
-  <section class="exam-templates">
-    <div class="study-section-heading"><div><p>YOUR PROGRESS</p><h2>Recent exam attempts</h2></div></div>
-    {% for attempt in recent_attempts %}
-      <article class="card exam-template">
-        <div>
-          <h3>{{ attempt.title }}</h3>
-          <p class="mute">{{ attempt.configuration.question_count }} questions · Started {{ attempt.started_at|date:"M j, Y H:i" }} · {% if attempt.submitted_at %}Submitted{% else %}In progress{% endif %}</p>
-        </div>
-        <div class="exam-template-actions">
-          <a class="btn {% if not attempt.submitted_at %}pri{% endif %}" href="{% url 'bank:exam_attempt' attempt.pk %}">{% if attempt.submitted_at %}Review{% else %}Resume{% endif %}</a>
-          <form method="post" action="{% url 'bank:exam_attempt_delete' attempt.pk %}" onsubmit="return confirm('Delete this exam attempt and its answers? This cannot be undone.')">
-            {% csrf_token %}<button class="btn" type="submit">Delete</button>
-          </form>
-        </div>
-      </article>
-    {% empty %}
-      <p class="mute">Your exam attempts will appear here so you can resume or review them.</p>
-    {% endfor %}
-  </section>
-
-  <section class="card exam-setup">
-    <h3>Set up a new template</h3>
-    {% if form.non_field_errors %}<div class="fb error">{{ form.non_field_errors }}</div>{% endif %}
-    <form method="post">
+  <section class="exam-section" id="build" aria-labelledby="build-title">
+    <div class="study-section-heading">
+      <div><p>BUILD YOUR OWN</p><h2 id="build-title">Set up a new exam</h2></div>
+    </div>
+    {% if form.non_field_errors %}<div class="exam-alert" role="alert">{% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}</div>{% endif %}
+    <form method="post" class="exam-builder" data-exam-builder
+          data-available="{{ available_json }}">
       {% csrf_token %}
-      {% for field in form.core_fields %}
-        <div class="exam-field">
-          <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-          {{ field }}
-          {% if field.help_text %}<small class="mute">{{ field.help_text }}</small>{% endif %}
-          {% for error in field.errors %}<small class="exam-error">{{ error }}</small>{% endfor %}
-        </div>
-      {% endfor %}
-      {% if form.publish_field %}
-      <div class="exam-field exam-publish-field">
-        <label for="{{ form.publish_field.id_for_label }}">{{ form.publish_field }} {{ form.publish_field.label }}</label>
-        <small class="mute">{{ form.publish_field.help_text }}</small>
-      </div>
-      {% endif %}
-      <p class="mute">Available questions: {{ question_counts.mcq }} multiple choice, {{ question_counts.tf }} true/false, {{ question_counts.descriptive }} descriptive, {{ question_counts.identify }} identify.</p>
-      <button class="btn pri" type="submit">Save template and start</button>
+      {% include "bank/_exam_source.html" %}
+      {% include "bank/_exam_settings.html" %}
+      {% include "bank/_exam_bar.html" with action="Start exam" %}
     </form>
   </section>
+
+  {% include "bank/_exam_lists.html" with part="mine" %}
 </main>
 {% endblock %}
+{% block scripts %}<script src="{% static 'bank/subject_exam.js' %}?v=2"></script>{% endblock %}

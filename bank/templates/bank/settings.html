@@ -43,6 +43,22 @@
       </details>
     </section>
 
+    {% if push_ready or user.is_staff %}
+    <section class="settings-section" aria-labelledby="push-title" data-push data-on="{{ push_on|yesno:'1,0' }}"
+             data-key="{{ vapid_public_key }}" data-subscribe="{% url 'bank:push_subscribe' %}"
+             data-unsubscribe="{% url 'bank:push_unsubscribe' %}" data-worker="{% url 'bank:service_worker' %}">
+      <h3 id="push-title">Notifications</h3>
+      <p class="mute">A short reminder from the team now and then, on this phone or computer.</p>
+      {% if push_ready %}
+      <button class="btn push-toggle" type="button" data-push-button aria-pressed="false">Allow notifications</button>
+      <p class="mute settings-hint" data-push-status role="status" aria-live="polite"></p>
+      {% else %}
+      <p class="mute settings-hint">Not switched on for the site yet.</p>
+      {% endif %}
+      {% if user.is_staff %}<p class="settings-hint"><a href="{% url 'bank:push_admin' %}">Manage phrases and timing →</a></p>{% endif %}
+    </section>
+    {% endif %}
+
     <section class="settings-section settings-wide" aria-labelledby="ai-title">
       <h3 id="ai-title">AI button</h3>
       <p class="mute">Which AI the button opens, and how it explains. Saved in this browser.</p>
@@ -85,6 +101,71 @@
 {% endblock %}
 {% block scripts %}
 {% include "bank/_password_toggle.html" %}
+<script>
+(() => {
+  const box = document.querySelector("[data-push]");
+  const button = box && box.querySelector("[data-push-button]");
+  if (!button) return;
+  const status = box.querySelector("[data-push-status]");
+  const csrf = () => (document.cookie.match(/(?:^|; )csrftoken=([^;]+)/) || [])[1] || "";
+  const post = (url, body) => fetch(url, {method: "POST", credentials: "same-origin",
+    headers: {"Content-Type": "application/json", "X-CSRFToken": decodeURIComponent(csrf())}, body: JSON.stringify(body)});
+  const keyBytes = key => {
+    const raw = atob((key + "=".repeat((4 - key.length % 4) % 4)).replace(/-/g, "+").replace(/_/g, "/"));
+    return Uint8Array.from(raw, c => c.charCodeAt(0));
+  };
+  const show = (on, message) => {
+    button.textContent = on ? "Turn notifications off" : "Allow notifications";
+    button.setAttribute("aria-pressed", String(on));
+    button.classList.toggle("pri", !on);
+    status.textContent = message || (on ? "On for this device." : "");
+  };
+  const supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  if (!supported) {
+    button.disabled = true;
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
+    status.textContent = ios
+      ? "On iPhone: tap Share → Add to Home Screen, open Rawasi from the Home Screen, then come back here."
+      : "This browser can't show notifications.";
+    return;
+  }
+  const registration = () => navigator.serviceWorker.register(box.dataset.worker, {scope: "/"})
+    .then(() => navigator.serviceWorker.ready);
+  registration().then(reg => reg.pushManager.getSubscription()).then(sub => {
+    if (Notification.permission === "denied") show(false, "Notifications are blocked for this site. Allow them in your browser's site settings, then try again.");
+    else show(Boolean(sub) && box.dataset.on === "1");
+  }).catch(() => show(false));
+
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    try {
+      const reg = await registration();
+      const current = await reg.pushManager.getSubscription();
+      if (button.getAttribute("aria-pressed") === "true") {
+        if (current) {
+          await post(box.dataset.unsubscribe, {endpoint: current.endpoint});
+          await current.unsubscribe();
+        }
+        show(false, "Turned off for this device.");
+        return;
+      }
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        show(false, "Notifications weren't allowed. Allow them in your browser's site settings, then try again.");
+        return;
+      }
+      const sub = current || await reg.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: keyBytes(box.dataset.key)});
+      const response = await post(box.dataset.subscribe, sub.toJSON());
+      if (!response.ok) throw new Error("server");
+      show(true, "Done! Your first one will come within the next few hours.");
+    } catch (error) {
+      show(false, "Couldn't turn notifications on. Please try again.");
+    } finally {
+      button.disabled = false;
+    }
+  });
+})();
+</script>
 <script>
 (() => {
   const form = document.getElementById("settings-form");

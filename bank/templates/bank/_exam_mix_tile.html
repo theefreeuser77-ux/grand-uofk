@@ -1,0 +1,6 @@
+<label class="exam-mix-tile" data-format="{{ key }}" for="{{ field.id_for_label }}">
+  <span class="exam-mix-name">{{ name }}</span>
+  <span class="exam-mix-input">{{ field }}<i aria-hidden="true">%</i></span>
+  <small class="exam-mix-have" data-have>{% if available or available == 0 %}{{ available }} available{% endif %}</small>
+  {% for error in field.errors %}<small class="exam-error">{{ error }}</small>{% endfor %}
+</label>

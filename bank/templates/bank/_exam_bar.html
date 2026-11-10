@@ -1,0 +1,7 @@
+<div class="exam-bar" data-exam-bar>
+  <div class="exam-bar-info" aria-live="polite">
+    <b data-bar-main>{{ main|default:"Your exam" }}</b>
+    <small data-bar-sub></small>
+  </div>
+  <button class="exam-start" type="submit" data-start data-busy="{{ busy|default:"Preparing your exam…" }}">{{ action }} <span aria-hidden="true">→</span></button>
+</div>

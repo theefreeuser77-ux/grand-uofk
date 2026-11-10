@@ -1,0 +1,65 @@
+<div class="exam-step" id="exam-chapters">
+  <div class="exam-step-head">
+    <span class="exam-step-num" aria-hidden="true">1</span>
+    <div><h3>What does it cover?</h3>
+      <p>Tick a whole {% if chapter_groups.0.semester %}semester{% else %}sub-subject{% endif %} in one tap, or open it to pick single chapters.</p></div>
+  </div>
+
+  <div class="exam-picker-tools">
+    {% if semesters|length > 1 %}
+    <div class="exam-chips" role="radiogroup" aria-label="Show chapters of semester">
+      <span class="exam-chips-label">Semester</span>
+      <label class="exam-chip"><input type="radio" name="semester" value="" {% if not start_semester %}checked{% endif %}><span>All</span></label>
+      {% for semester in semesters %}
+      <label class="exam-chip"><input type="radio" name="semester" value="{{ semester }}" {% if start_semester == semester|stringformat:"s" %}checked{% endif %}><span>S{{ semester }}</span></label>
+      {% endfor %}
+    </div>
+    {% endif %}
+    <button type="button" class="exam-link-btn" data-clear>Clear selection</button>
+  </div>
+
+  <div class="exam-groups">
+    {% for group in chapter_groups %}
+    <section class="exam-group" data-group style="--i:{{ forloop.counter0 }}">
+      <div class="exam-group-head">
+        <label class="exam-group-check">
+          <input type="checkbox" data-group-check aria-label="Select all chapters of {{ group.name }}">
+          <span class="exam-group-copy"><b>{{ group.name }}</b>
+            <small data-group-status>{{ group.rows|length }} chapter{{ group.rows|length|pluralize }} · {{ group.questions }} question{{ group.questions|pluralize }}</small></span>
+        </label>
+        <button type="button" class="exam-group-toggle" data-group-toggle aria-expanded="false">
+          <span>Chapters</span><span class="exam-chevron" aria-hidden="true">⌄</span>
+        </button>
+      </div>
+      <div class="exam-group-body" data-group-body hidden>
+        {% for row in group.rows %}
+        {% if group.multi_semester %}{% ifchanged row.bank.semester %}<p class="exam-sem-label" data-sem-label="{{ row.bank.semester }}">Semester {{ row.bank.semester }}</p>{% endifchanged %}{% endif %}
+        <div class="exam-chapter" data-chapter data-semester="{{ row.bank.semester }}" data-counts="{{ row.counts_json }}">
+          <label class="exam-chapter-pick">
+            {{ row.selected }}
+            <span class="exam-chapter-name"><b>{{ row.bank.title }}</b>
+              <small><span data-chapter-total>{{ row.total }} question{{ row.total|pluralize }}</span>{% if not group.multi_semester and not group.semester %} · S{{ row.bank.semester }}{% endif %}</small></span>
+          </label>
+          <label class="exam-chapter-share" title="Share of the exam">
+            {{ row.percentage }}<i aria-hidden="true">%</i>
+          </label>
+          {% for error in row.selected.errors %}<small class="exam-error">{{ error }}</small>{% endfor %}
+          {% for error in row.percentage.errors %}<small class="exam-error">{{ error }}</small>{% endfor %}
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+    {% empty %}
+    <p class="mute">This subject has no chapters yet.</p>
+    {% endfor %}
+  </div>
+
+  <div class="exam-share-mode">
+    <span class="exam-chips-label">Questions per chapter</span>
+    <div class="exam-chips" role="radiogroup" aria-label="How to share the questions between chapters">
+      <label class="exam-chip"><input type="radio" name="share_mode" value="even" {% if share_mode == "even" %}checked{% endif %}><span>Equal</span></label>
+      <label class="exam-chip"><input type="radio" name="share_mode" value="size" {% if share_mode == "size" %}checked{% endif %}><span>By chapter size</span></label>
+      <label class="exam-chip"><input type="radio" name="share_mode" value="custom" {% if share_mode == "custom" %}checked{% endif %}><span>Set % myself</span></label>
+    </div>
+  </div>
+</div>

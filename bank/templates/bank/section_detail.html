@@ -13,6 +13,9 @@
     <div class="page-stats">
       <span><b>{{ decks|length }}</b> chapter{{ decks|length|pluralize }}</span>
     </div>
+    {% if decks %}
+    <a class="page-hero-cta" href="{% url 'bank:subject_exams' subject.slug %}?section={{ section.slug }}#build">Mock exam on {{ section.name }} <span aria-hidden="true">→</span></a>
+    {% endif %}
   </section>
 
   {% regroup decks by semester as sems %}

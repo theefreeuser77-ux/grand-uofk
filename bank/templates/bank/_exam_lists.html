@@ -1,0 +1,56 @@
+{% if part == "continue" %}
+  {% for attempt in open_attempts|slice:":2" %}
+  <a class="exam-continue" href="{% url 'bank:exam_attempt' attempt.pk %}">
+    <span class="exam-continue-dot" aria-hidden="true"></span>
+    <span><small>Exam in progress</small><b>{{ attempt.title }}</b></span>
+    <span class="exam-continue-go">Resume <span aria-hidden="true">→</span></span>
+  </a>
+  {% endfor %}
+
+{% elif part == "ready" %}
+  {% if admin_templates %}
+  <section class="exam-section" aria-labelledby="ready-title">
+    <div class="study-section-heading"><div><p>READY TO TAKE</p><h2 id="ready-title">Ready-made exams</h2></div></div>
+    <div class="exam-cards">
+      {% for template in admin_templates %}{% include "bank/_exam_card.html" with mine=False index=forloop.counter0 %}{% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+{% else %}
+  <section class="exam-section" aria-labelledby="mine-title">
+    <div class="study-section-heading"><div><p>SAVED BY YOU</p><h2 id="mine-title">My saved exams</h2></div></div>
+    {% if my_templates %}
+    <div class="exam-cards">
+      {% for template in my_templates %}{% include "bank/_exam_card.html" with mine=True index=forloop.counter0 %}{% endfor %}
+    </div>
+    {% else %}
+    <p class="exam-empty">Every exam you start is saved here, so you can take it again later.</p>
+    {% endif %}
+  </section>
+
+  <section class="exam-section" aria-labelledby="recent-title">
+    <div class="study-section-heading"><div><p>YOUR PROGRESS</p><h2 id="recent-title">Recent exam attempts</h2></div></div>
+    {% if recent_attempts %}
+    <ul class="exam-attempts">
+      {% for attempt in recent_attempts %}
+      <li class="exam-attempt">
+        <div class="exam-attempt-copy">
+          <b>{{ attempt.title }}</b>
+          <small>{{ attempt.configuration.question_count }} questions · {{ attempt.started_at|date:"M j, H:i" }} ·
+            {% if attempt.submitted_at %}<span class="exam-state">Submitted</span>{% else %}<span class="exam-state is-open">In progress</span>{% endif %}</small>
+        </div>
+        <div class="exam-attempt-actions">
+          <a class="exam-card-start{% if attempt.submitted_at %} is-quiet{% endif %}" href="{% url 'bank:exam_attempt' attempt.pk %}">{% if attempt.submitted_at %}Review{% else %}Resume{% endif %}</a>
+          <form method="post" action="{% url 'bank:exam_attempt_delete' attempt.pk %}" onsubmit="return confirm('Delete this exam attempt and its answers? This cannot be undone.')">
+            {% csrf_token %}<button class="exam-link-btn is-danger" type="submit" aria-label="Delete {{ attempt.title }}">Delete</button>
+          </form>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="exam-empty">Your exam attempts will appear here, so you can resume or review them.</p>
+    {% endif %}
+  </section>
+{% endif %}

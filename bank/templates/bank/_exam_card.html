@@ -1,0 +1,33 @@
+<article class="exam-card" style="--i:{{ index|default:0 }}">
+  <div class="exam-card-top">
+    <h3>{{ template.name }}</h3>
+    {% if template.snapshot %}<span class="exam-badge">Saved question set</span>{% endif %}
+    {% if template.source_name %}<span class="exam-badge is-source">{{ template.source_name }}</span>{% endif %}
+    {% if mine and template.is_published %}<span class="exam-badge is-gold">Published</span>{% endif %}
+  </div>
+  <p class="exam-card-meta">
+    <span><b>{{ template.question_count }}</b> questions</span>
+    <span>{% if template.time_limit_minutes %}<b>{{ template.time_limit_minutes }}</b> min{% else %}No time limit{% endif %}</span>
+  </p>
+  <p class="exam-card-mix">
+    {% if template.mix.mcq %}<span>MCQ {{ template.mix.mcq }}%</span>{% endif %}
+    {% if template.mix.tf %}<span>T/F {{ template.mix.tf }}%</span>{% endif %}
+    {% if template.mix.descriptive %}<span>Descriptive {{ template.mix.descriptive }}%</span>{% endif %}
+    {% if template.mix.identify %}<span>Identify {{ template.mix.identify }}%</span>{% endif %}
+  </p>
+  {% if template.subject_id %}
+  {% with chapters=template.chapters.all %}
+  <p class="exam-card-chapters">{% for chapter in chapters %}{% if forloop.counter <= 3 %}{% if not forloop.first %} · {% endif %}{{ chapter.bank.title }}{% endif %}{% endfor %}{% if chapters|length > 3 %} <b>+{{ chapters|length|add:"-3" }} more</b>{% endif %}</p>
+  {% endwith %}
+  {% endif %}
+  {% if not mine %}<p class="exam-card-by">Published by {{ template.user.username }}</p>{% endif %}
+  <div class="exam-card-actions">
+    <form method="post" action="{% url 'bank:exam_template_start' template.pk %}">{% csrf_token %}
+      <button class="exam-card-start" type="submit">Start <span aria-hidden="true">→</span></button></form>
+    {% if template.user_id == user.pk and not template.snapshot %}<a class="exam-link-btn" href="{% url 'bank:exam_template_edit' template.pk %}">Edit</a>{% endif %}
+    {% if mine %}
+    <form method="post" action="{% url 'bank:exam_template_delete' template.pk %}" onsubmit="return confirm('Delete this saved exam?')">{% csrf_token %}
+      <button class="exam-link-btn is-danger" type="submit">Delete</button></form>
+    {% endif %}
+  </div>
+</article>

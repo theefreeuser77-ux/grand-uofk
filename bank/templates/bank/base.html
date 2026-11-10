@@ -38,7 +38,7 @@
 <link rel="manifest" href="{% url 'bank:manifest' %}">
 <link rel="icon" type="image/svg+xml" href="{% static 'bank/icons/app-101.svg' %}">
 <link rel="apple-touch-icon" href="{% static 'bank/icons/app-101-192.png' %}">
-<link rel="stylesheet" href="{% static 'bank/style.css' %}?v=20261110-4">
+<link rel="stylesheet" href="{% static 'bank/style.css' %}?v=20261110-6">
 {% block head %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
@@ -67,6 +67,7 @@
         {% if user.is_staff %}<a href="{% url 'bank:sorting_bin' %}"{% if here == "sorting_bin" %} aria-current="page"{% endif %}>Sorting bin{% if sorting_bin_count %}<span class="badge">{{ sorting_bin_count }}</span>{% endif %}</a>
         <a href="{% url 'bank:review_bin' %}"{% if here == "review_bin" %} aria-current="page"{% endif %}>Review bin{% if review_bin_count %}<span class="badge">{{ review_bin_count }}</span>{% endif %}</a>
         <a href="{% url 'bank:subject_backup' %}"{% if here == "subject_backup" %} aria-current="page"{% endif %}>Backup</a>
+        <a href="{% url 'bank:push_admin' %}"{% if here == "push_admin" %} aria-current="page"{% endif %}>Notifications</a>
         <a href="{% url 'admin:index' %}">Admin</a>{% endif %}
       </div>
       {% endif %}

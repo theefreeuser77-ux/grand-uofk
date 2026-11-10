@@ -1,0 +1,48 @@
+<div class="exam-step" id="exam-settings">
+  <div class="exam-step-head">
+    {% if step %}<span class="exam-step-num" aria-hidden="true">{{ step }}</span>{% endif %}
+    <div><h3>Exam settings</h3><p>How long it is and which kinds of questions it has.</p></div>
+  </div>
+
+  <div class="exam-basics">
+    {% with field=form.question_count %}
+    <label class="exam-field" for="{{ field.id_for_label }}"><span>Questions</span>{{ field }}
+      {% for error in field.errors %}<small class="exam-error">{{ error }}</small>{% endfor %}</label>
+    {% endwith %}
+    {% with field=form.time_limit_minutes %}
+    <label class="exam-field" for="{{ field.id_for_label }}"><span>Time limit (minutes)</span>{{ field }}
+      <small class="mute">Leave empty for no limit.</small>
+      {% for error in field.errors %}<small class="exam-error">{{ error }}</small>{% endfor %}</label>
+    {% endwith %}
+    {% with field=form.name %}
+    <label class="exam-field exam-field-wide" for="{{ field.id_for_label }}"><span>{{ field.label }}</span>{{ field }}
+      {% for error in field.errors %}<small class="exam-error">{{ error }}</small>{% endfor %}</label>
+    {% endwith %}
+  </div>
+
+  <div class="exam-mix">
+    <div class="exam-mix-head">
+      <span class="exam-chips-label">Question types</span>
+      <span class="exam-mix-total" data-mix-total></span>
+    </div>
+    <div class="exam-presets" aria-label="Quick choices">
+      <button type="button" class="exam-chip-btn" data-preset="100,0,0,0">MCQ only</button>
+      <button type="button" class="exam-chip-btn" data-preset="50,50,0,0">MCQ + T/F</button>
+      <button type="button" class="exam-chip-btn" data-preset="60,20,20,0">Written too</button>
+      <button type="button" class="exam-chip-btn" data-preset="40,20,20,20">Everything</button>
+    </div>
+    <div class="exam-mix-grid">
+      {% include "bank/_exam_mix_tile.html" with field=form.mcq_percent key="mcq" name="Multiple choice" available=question_counts.mcq %}
+      {% include "bank/_exam_mix_tile.html" with field=form.tf_percent key="tf" name="True / False" available=question_counts.tf %}
+      {% include "bank/_exam_mix_tile.html" with field=form.descriptive_percent key="descriptive" name="Descriptive" available=question_counts.descriptive %}
+      {% include "bank/_exam_mix_tile.html" with field=form.identify_percent key="identify" name="Identify (images)" available=question_counts.identify %}
+    </div>
+  </div>
+
+  {% if form.publish_field %}
+  <label class="exam-publish" for="{{ form.publish_field.id_for_label }}">
+    {{ form.publish_field }}
+    <span><b>{{ form.publish_field.label }}</b><small>{{ form.publish_field.help_text }}</small></span>
+  </label>
+  {% endif %}
+</div>

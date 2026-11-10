@@ -39,6 +39,7 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "bank.middleware.SingleSessionMiddleware",
+    "bank.middleware.PushTickMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -131,3 +132,10 @@ TOPIC_AI_CHUNK_CHARACTERS = int(os.environ.get("TOPIC_AI_CHUNK_CHARACTERS", "600
 TOPIC_AI_USER_DAILY_LIMIT = int(os.environ.get("TOPIC_AI_USER_DAILY_LIMIT", "10"))
 # Optional lighter/faster model for topic search only; empty means GEMINI_MODEL.
 TOPIC_AI_MODEL = os.environ.get("TOPIC_AI_MODEL", "")
+# Phone/browser notifications (Web Push). Without both keys the feature stays hidden.
+VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "")
+VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
+VAPID_SUBJECT = os.environ.get(
+    "VAPID_SUBJECT", f"https://{render_hostname}" if render_hostname else "mailto:admin@example.com")
+# Optional secret for /push/tick/<key>/, so an outside cron job can send when the site is quiet.
+PUSH_TICK_KEY = os.environ.get("PUSH_TICK_KEY", "")
