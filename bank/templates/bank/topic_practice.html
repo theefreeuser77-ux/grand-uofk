@@ -33,6 +33,15 @@
     <button class="btn pri" data-ai-button>Find the questions with AI</button>
     <span class="mute" data-ai-note>{{ ai_searches_left }} AI search{{ ai_searches_left|pluralize:"es" }} left for you today. Topics someone already searched in this chapter are free and instant.</span>
   </form>
+  <div class="ai-wait" data-ai-wait hidden role="status" aria-live="polite">
+    <div class="ai-wait-box">
+      <div class="ai-wait-orb" aria-hidden="true"><span></span><span></span><span></span></div>
+      <h3 class="ai-wait-title">Finding <q data-ai-topic></q></h3>
+      <p class="ai-wait-step" data-ai-step>Starting…</p>
+      <div class="ai-wait-bar" aria-hidden="true"><i data-ai-bar></i></div>
+      <p class="ai-wait-time mute"><span data-ai-seconds>0</span>s · usually 10-40 seconds. Please keep this page open.</p>
+    </div>
+  </div>
   {% endif %}
 </div>
 
@@ -84,12 +93,52 @@
   const chapter = JSON.parse(document.getElementById("chapter-title").textContent);
   const topicCopies = document.querySelectorAll("[data-topic-copy]");
   const aiForm = document.querySelector("[data-topic-ai]");
+  const wait = document.querySelector("[data-ai-wait]");
+  let timers = [];
+  function stopWaiting() {
+    timers.forEach(clearInterval);
+    timers = [];
+    if (wait) wait.hidden = true;
+    const button = aiForm && aiForm.querySelector("[data-ai-button]");
+    if (button) button.disabled = false;
+  }
   if (aiForm) aiForm.addEventListener("submit", event => {
-    if (!input.value.trim()) { event.preventDefault(); input.focus(); return; }
-    const button = aiForm.querySelector("[data-ai-button]");
-    button.disabled = true;
-    button.textContent = "Searching… this can take up to a minute";
+    const topic = input.value.trim();
+    if (!topic) { event.preventDefault(); input.focus(); return; }
+    aiForm.querySelector("[data-ai-button]").disabled = true;
+    if (!wait) return;
+    const count = {{ question_count }};
+    const steps = [
+      `Reading the ${count} questions of ${chapter}…`,
+      `Looking for “${topic}”…`,
+      "Checking related terms and structures…",
+      "Picking the matching questions…",
+      "Almost there…",
+    ];
+    wait.querySelector("[data-ai-topic]").textContent = topic;
+    const step = wait.querySelector("[data-ai-step]");
+    const bar = wait.querySelector("[data-ai-bar]");
+    const seconds = wait.querySelector("[data-ai-seconds]");
+    const started = Date.now();
+    let progress = 4, index = 0;
+    step.textContent = steps[0];
+    bar.style.width = progress + "%";
+    wait.hidden = false;
+    timers.push(setInterval(() => {         // quick at first, then creeping towards 92%
+      progress += (92 - progress) * 0.035;
+      bar.style.width = progress.toFixed(1) + "%";
+      seconds.textContent = Math.round((Date.now() - started) / 1000);
+    }, 300));
+    timers.push(setInterval(() => {
+      index = Math.min(index + 1, steps.length - 1);
+      step.classList.remove("is-new");
+      void step.offsetWidth;
+      step.textContent = steps[index];
+      step.classList.add("is-new");
+    }, 5000));
   });
+  // Coming back with the browser's Back button must not leave the overlay showing.
+  window.addEventListener("pageshow", stopWaiting);
 
   const promptFor = (topic, questions, part, total) => [
     `I am a medical student studying the chapter "${chapter}". Below is a list of exam questions` +

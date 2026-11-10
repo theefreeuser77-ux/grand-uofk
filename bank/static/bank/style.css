@@ -3982,3 +3982,32 @@ tr.drop-active>td{background:var(--acc-soft)}
 .topic-types .btn{display:flex;justify-content:space-between;width:100%;max-width:420px}
 .topic-ai{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-top:10px}
 .topic-or{margin:18px 0 10px;font-size:1rem}
+/* AI topic search: waiting view */
+.ai-wait{position:fixed;inset:0;z-index:200;display:grid;place-items:center;padding:16px;
+  background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(6px);animation:ai-fade .25s ease-out}
+.ai-wait[hidden]{display:none}
+.ai-wait-box{width:min(440px,100%);background:var(--card);border:1px solid var(--line);border-radius:18px;
+  padding:26px 22px 20px;text-align:center;box-shadow:0 18px 50px rgba(0,0,0,.18)}
+.ai-wait-title{margin:14px 0 6px;font-size:1.15rem}
+.ai-wait-title q{color:var(--acc)}
+.ai-wait-step{margin:0 0 16px;min-height:1.4em;color:var(--ink)}
+.ai-wait-step.is-new{animation:ai-step .45s ease-out}
+.ai-wait-bar{height:8px;border-radius:99px;background:var(--acc-soft);overflow:hidden;position:relative}
+.ai-wait-bar i{display:block;height:100%;width:4%;border-radius:inherit;background:var(--acc);
+  transition:width .3s linear;position:relative;overflow:hidden}
+.ai-wait-bar i::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);animation:ai-shine 1.4s linear infinite}
+.ai-wait-time{margin:10px 0 0;font-size:.85rem}
+.ai-wait-orb{position:relative;width:56px;height:56px;margin:0 auto}
+.ai-wait-orb span{position:absolute;inset:0;border-radius:50%;border:3px solid transparent;border-top-color:var(--acc);
+  animation:ai-spin 1.2s cubic-bezier(.5,.15,.5,.85) infinite}
+.ai-wait-orb span:nth-child(2){inset:8px;border-top-color:var(--ok);animation-duration:1.6s;animation-direction:reverse}
+.ai-wait-orb span:nth-child(3){inset:17px;background:var(--acc-soft);border:0;animation:ai-pulse 1.6s ease-in-out infinite}
+@keyframes ai-spin{to{transform:rotate(360deg)}}
+@keyframes ai-pulse{50%{transform:scale(.7);opacity:.6}}
+@keyframes ai-shine{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+@keyframes ai-step{from{opacity:0;transform:translateY(6px)}}
+@keyframes ai-fade{from{opacity:0}}
+@media (prefers-reduced-motion:reduce){
+  .ai-wait,.ai-wait-step.is-new,.ai-wait-orb span,.ai-wait-bar i::after{animation:none}
+}

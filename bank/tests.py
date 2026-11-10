@@ -3393,6 +3393,7 @@ class TopicAISearchTests(Base):
         page = self.client.get(reverse("bank:topic_practice", args=[self.deck.slug]))
         self.assertContains(page, "Find the questions with AI")
         self.assertContains(page, "2 AI searches left for you today")
+        self.assertContains(page, "data-ai-wait hidden")      # the waiting view, shown while the AI works
 
     @override_settings(GEMINI_API_KEY="")
     def test_no_ai_button_without_api_key(self):
