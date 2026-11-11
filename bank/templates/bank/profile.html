@@ -81,19 +81,6 @@
     </nav>
   </section>
   {% endif %}
-
-  <section class="settings-section" aria-labelledby="stats-title">
-    <h3 id="stats-title">Study</h3>
-    {% if show_stats %}
-    <div class="profile-stats">
-      <div><span>Mock exams</span><strong>{{ stats.exams_finished }}</strong><small>finished</small></div>
-      <div><span>Questions</span><strong>{{ stats.saved }}</strong><small>saved</small></div>
-    </div>
-    {% if is_me and profile.stats_visibility != "everyone" %}<p class="mute settings-hint">Only you can see these. Change that in <a href="{% url 'bank:settings' %}#profile">Settings</a>.</p>{% endif %}
-    {% else %}
-    <p class="mute">{{ profile.name }} keeps their study stats private.</p>
-    {% endif %}
-  </section>
 </div>
 {% endblock %}
 {% block scripts %}

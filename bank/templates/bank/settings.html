@@ -65,13 +65,6 @@
             </div>
           </div>
           <fieldset class="settings-choices">
-            <legend>{{ profile_form.stats_visibility.label }}</legend>
-            <div class="settings-chips">
-              {% for choice in profile_form.stats_visibility %}<label class="settings-chip">{{ choice.tag }}<span>{{ choice.choice_label }}</span></label>{% endfor %}
-            </div>
-            <p class="mute settings-hint">Mock exams finished and questions saved.</p>
-          </fieldset>
-          <fieldset class="settings-choices">
             <legend>{{ profile_form.who_can_request.label }}</legend>
             <div class="settings-chips">
               {% for choice in profile_form.who_can_request %}<label class="settings-chip">{{ choice.tag }}<span>{{ choice.choice_label }}</span></label>{% endfor %}

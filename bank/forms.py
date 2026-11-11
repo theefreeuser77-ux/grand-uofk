@@ -414,15 +414,13 @@ class ProfileForm(forms.ModelForm):
 
     class Meta:
         model = Profile
-        fields = ["display_name", "handle", "university", "year", "stats_visibility", "who_can_request"]
+        fields = ["display_name", "handle", "university", "year", "who_can_request"]
         labels = {
             "display_name": "Name shown to others",
             "year": "Year",
-            "stats_visibility": "Who can see my study stats",
             "who_can_request": "Who can send me friend requests",
         }
-        widgets = {"university": forms.Select(), "stats_visibility": forms.RadioSelect,
-                   "who_can_request": forms.RadioSelect}
+        widgets = {"university": forms.Select(), "who_can_request": forms.RadioSelect}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

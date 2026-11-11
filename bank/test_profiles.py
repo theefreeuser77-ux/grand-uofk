@@ -103,7 +103,7 @@ class ProfileViewTests(TestCase):
         profile = profiles.profile_for(self.user)
         data = {"action": "profile", "display_name": profile.display_name, "handle": profile.handle,
                 "university": profile.university, "year": profile.year or "",
-                "stats_visibility": profile.stats_visibility, "who_can_request": profile.who_can_request}
+                "who_can_request": profile.who_can_request}
         data.update(changes)
         return self.client.post(reverse("bank:settings"), data)
 
@@ -156,25 +156,15 @@ class ProfileViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(Profile.objects.get(user=self.user).avatar_key, "")
 
-    def test_profile_page_privacy(self):
+    def test_profile_page_shows_code_only_to_owner(self):
         mine = profiles.profile_for(self.user)
         theirs = profiles.profile_for(self.other)
-
         response = self.client.get(reverse("bank:profile", args=[mine.handle]))
-        self.assertContains(response, mine.friend_code)
-        self.assertContains(response, "Mock exams")
-
+        self.assertContains(response, "Your friend code")
+        self.assertNotContains(response, "Mock exams")
         response = self.client.get(reverse("bank:profile", args=[theirs.handle.upper()]))
+        self.assertNotContains(response, "Your friend code")
         self.assertNotContains(response, theirs.friend_code)
-        self.assertContains(response, "keeps their study stats private")
-
-        theirs.stats_visibility = Profile.VISIBLE_FRIENDS
-        theirs.save()
-        self.assertContains(self.client.get(theirs.get_absolute_url()), "keeps their study stats private")
-
-        theirs.stats_visibility = Profile.VISIBLE_EVERYONE
-        theirs.save()
-        self.assertContains(self.client.get(theirs.get_absolute_url()), "Mock exams")
 
     def test_inactive_and_missing_profiles_404(self):
         theirs = profiles.profile_for(self.other)

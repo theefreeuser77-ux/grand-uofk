@@ -2815,7 +2815,6 @@ def profile_page(request, handle):
     if friends.has_blocked(profile.user, request.user):
         raise Http404
     is_me = profile.user_id == request.user.pk
-    show_stats = profiles.can_see_stats(profile, request.user)
     state = friends.relationship(request.user, profile.user)
     profile_link = request.build_absolute_uri(profile.get_absolute_url())
     return render(request, "bank/profile.html", {
@@ -2825,8 +2824,6 @@ def profile_page(request, handle):
         "request_problem": friends.request_problem(request.user, profile.user) if state == friends.NONE else None,
         "qr_svg": _qr_svg(profile_link) if is_me else "",
         "friend_count": friends.friends_of(profile.user).count() if is_me or state == friends.FRIENDS else None,
-        "show_stats": show_stats,
-        "stats": profiles.profile_stats(profile) if show_stats else None,
         "profile_link": profile_link,
     })
 

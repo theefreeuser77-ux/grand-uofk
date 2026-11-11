@@ -171,23 +171,3 @@ def _delete_quietly(key):
         image_storage.delete_avatar(key)
     except (image_storage.ImageStorageError, ValueError):
         log.warning("Could not delete old profile picture %s", key, exc_info=True)
-
-
-# ---------------------------------------------------------------- what a viewer may see
-def can_see_stats(profile, viewer):
-    if viewer.pk == profile.user_id:
-        return True
-    if profile.stats_visibility == Profile.VISIBLE_EVERYONE:
-        return True
-    if profile.stats_visibility == Profile.VISIBLE_FRIENDS:
-        from .friends import are_friends
-        return are_friends(profile.user, viewer)
-    return False
-
-
-def profile_stats(profile):
-    user = profile.user
-    return {
-        "exams_finished": user.exam_attempts.filter(submitted_at__isnull=False).count(),
-        "saved": user.saved_questions.count(),
-    }

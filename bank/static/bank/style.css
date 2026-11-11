@@ -4448,11 +4448,3 @@ tr.drop-active>td{background:var(--acc-soft)}
 .code-pass-links a{padding:13px 10px;text-align:center;color:#ffcc5e;font-weight:700;font-size:.9rem;text-decoration:none}
 .code-pass-links a+a{border-left:1px solid rgba(233,171,17,.2)}
 .code-pass-links a:hover{background:rgba(233,171,17,.1)}
-
-/* ---- Study tiles ---- */
-.profile-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-.profile-stats div{display:grid;gap:2px;padding:14px 16px;border-radius:14px;background:var(--bg);border:1px solid var(--line);
-  border-top:3px solid var(--brand-gold)}
-.profile-stats span{color:var(--mute);font-size:.72rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
-.profile-stats strong{font-family:var(--font-display);font-size:2rem;line-height:1.1;font-variant-numeric:tabular-nums}
-.profile-stats small{color:var(--mute);font-size:.85rem}

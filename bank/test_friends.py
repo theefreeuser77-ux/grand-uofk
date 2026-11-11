@@ -99,16 +99,6 @@ class FriendRulesTests(TestCase):
         with self.assertRaises(friends.FriendError):
             friends.accept(self.c, FriendRequest.objects.get())
 
-    def test_friends_only_stats(self):
-        profile = profiles.profile_for(self.b)
-        profile.stats_visibility = Profile.VISIBLE_FRIENDS
-        profile.save()
-        self.assertFalse(profiles.can_see_stats(profile, self.a))
-        friends.send_request(self.a, self.b)
-        friends.accept(self.b, FriendRequest.objects.get())
-        self.assertTrue(profiles.can_see_stats(profile, self.a))
-        self.assertFalse(profiles.can_see_stats(profile, self.c))
-
 
 class FriendViewTests(TestCase):
     def setUp(self):
