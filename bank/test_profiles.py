@@ -162,7 +162,7 @@ class ProfileViewTests(TestCase):
 
         response = self.client.get(reverse("bank:profile", args=[mine.handle]))
         self.assertContains(response, mine.friend_code)
-        self.assertContains(response, "questions saved")
+        self.assertContains(response, "Mock exams")
 
         response = self.client.get(reverse("bank:profile", args=[theirs.handle.upper()]))
         self.assertNotContains(response, theirs.friend_code)
@@ -174,7 +174,7 @@ class ProfileViewTests(TestCase):
 
         theirs.stats_visibility = Profile.VISIBLE_EVERYONE
         theirs.save()
-        self.assertContains(self.client.get(theirs.get_absolute_url()), "mock exams finished")
+        self.assertContains(self.client.get(theirs.get_absolute_url()), "Mock exams")
 
     def test_inactive_and_missing_profiles_404(self):
         theirs = profiles.profile_for(self.other)

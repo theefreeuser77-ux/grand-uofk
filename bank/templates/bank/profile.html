@@ -50,20 +50,35 @@
   {% endif %}
 
   {% if is_me %}
-  <section class="settings-section profile-share" aria-labelledby="share-title">
-    <h3 id="share-title">Your friend code</h3>
-    <p class="mute">Give friends this code or your link so they can find you.</p>
-    <div class="profile-code-row">
-      <code class="profile-code" aria-label="Friend code {{ profile.friend_code }}">{{ profile.friend_code }}</code>
-      <button class="btn" type="button" data-copy="{{ profile.friend_code }}">Copy code</button>
-      <button class="btn" type="button" data-copy="{{ profile_link }}" data-share-title="{{ profile.name }} on {{ SITE_NAME }}">Share link</button>
-      <span class="mute" role="status" aria-live="polite" data-copy-status></span>
+  <section class="code-pass" aria-labelledby="share-title">
+    <div class="code-pass-top">
+      <h3 id="share-title" class="code-pass-label">Your friend code</h3>
+      <p class="code-pass-code" aria-label="Friend code {{ profile.friend_code }}">{% for ch in profile.friend_code %}<span>{{ ch }}</span>{% endfor %}</p>
+      <p class="code-pass-hint">Friends type this in Friends → Add a friend</p>
     </div>
-    <details class="profile-qr">
-      <summary class="btn">Show QR code</summary>
-      <div class="profile-qr-box">{{ qr_svg|safe }}<p class="mute settings-hint">A friend scans this with their phone camera to open your profile.</p></div>
-    </details>
-    <p class="settings-hint"><a href="{% url 'bank:friends' %}">Friends →</a> · <a href="{% url 'bank:settings' %}#profile">Edit profile →</a></p>
+    <div class="code-pass-actions">
+      <button type="button" data-copy="{{ profile.friend_code }}" data-done="Copied">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>
+        <span>Copy</span>
+      </button>
+      <button type="button" data-copy="{{ profile_link }}" data-share-title="{{ profile.name }} on {{ SITE_NAME }}" data-done="Link copied">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
+        <span>Share</span>
+      </button>
+      <button type="button" aria-expanded="false" aria-controls="code-pass-qr" data-qr-toggle>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/></svg>
+        <span>QR code</span>
+      </button>
+    </div>
+    <div class="code-pass-qr" id="code-pass-qr" hidden>
+      {{ qr_svg|safe }}
+      <p>A friend scans this with their phone camera to open your profile.</p>
+    </div>
+    <p class="code-pass-status" role="status" aria-live="polite" data-copy-status></p>
+    <nav class="code-pass-links" aria-label="Profile shortcuts">
+      <a href="{% url 'bank:friends' %}">My friends</a>
+      <a href="{% url 'bank:settings' %}#profile">Edit profile</a>
+    </nav>
   </section>
   {% endif %}
 
@@ -71,8 +86,8 @@
     <h3 id="stats-title">Study</h3>
     {% if show_stats %}
     <div class="profile-stats">
-      <div><strong>{{ stats.exams_finished }}</strong><span>mock exam{{ stats.exams_finished|pluralize }} finished</span></div>
-      <div><strong>{{ stats.saved }}</strong><span>question{{ stats.saved|pluralize }} saved</span></div>
+      <div><span>Mock exams</span><strong>{{ stats.exams_finished }}</strong><small>finished</small></div>
+      <div><span>Questions</span><strong>{{ stats.saved }}</strong><small>saved</small></div>
     </div>
     {% if is_me and profile.stats_visibility != "everyone" %}<p class="mute settings-hint">Only you can see these. Change that in <a href="{% url 'bank:settings' %}#profile">Settings</a>.</p>{% endif %}
     {% else %}
@@ -99,11 +114,21 @@ document.querySelectorAll("form[data-confirm]").forEach(form => {
       }
       try {
         await navigator.clipboard.writeText(text);
-        if (status) status.textContent = "Copied.";
+        if (status) status.textContent = (button.dataset.done || "Copied") + " ✓";
+        button.classList.add("is-done");
+        setTimeout(() => button.classList.remove("is-done"), 1600);
       } catch (error) {
         if (status) status.textContent = text;
       }
     });
+  });
+  const qrButton = document.querySelector("[data-qr-toggle]");
+  if (qrButton) qrButton.addEventListener("click", () => {
+    const box = document.getElementById(qrButton.getAttribute("aria-controls"));
+    const open = box.hidden;
+    box.hidden = !open;
+    qrButton.setAttribute("aria-expanded", String(open));
+    qrButton.querySelector("span").textContent = open ? "Hide QR" : "QR code";
   });
 })();
 </script>
