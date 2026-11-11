@@ -494,3 +494,56 @@ class PushSubscription(models.Model):
     p256dh = models.CharField(max_length=200)
     auth = models.CharField(max_length=100)
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class Profile(models.Model):
+    """A student's public face: handle, friend code, picture and privacy choices."""
+    VISIBLE_PRIVATE, VISIBLE_FRIENDS, VISIBLE_EVERYONE = "private", "friends", "everyone"
+    STATS_CHOICES = [
+        (VISIBLE_PRIVATE, "Only me"),
+        (VISIBLE_FRIENDS, "My friends"),
+        (VISIBLE_EVERYONE, "Everyone"),
+    ]
+    REQUESTS_EVERYONE, REQUESTS_UNIVERSITY, REQUESTS_NOBODY = "everyone", "university", "nobody"
+    REQUESTS_CHOICES = [
+        (REQUESTS_EVERYONE, "Everyone"),
+        (REQUESTS_UNIVERSITY, "People at my university"),
+        (REQUESTS_NOBODY, "Nobody"),
+    ]
+    YEAR_CHOICES = [(i, f"Year {i}") for i in range(1, 7)]
+
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="profile")
+    handle = models.CharField(max_length=20, unique=True)
+    handle_changed_at = models.DateTimeField(null=True, blank=True)
+    friend_code = models.CharField(max_length=6, unique=True)
+    display_name = models.CharField(max_length=60, blank=True)
+    university = models.CharField(max_length=20, blank=True)
+    year = models.PositiveSmallIntegerField(null=True, blank=True, choices=YEAR_CHOICES)
+    # "supabase:avatars/<user>/<id>" or "local:<user>/<id>"; the 256px and 64px files sit next to it.
+    avatar_key = models.CharField(max_length=200, blank=True)
+    avatar_url = models.URLField(max_length=500, blank=True)
+    avatar_small_url = models.URLField(max_length=500, blank=True)
+    stats_visibility = models.CharField(max_length=10, choices=STATS_CHOICES, default=VISIBLE_PRIVATE)
+    who_can_request = models.CharField(max_length=10, choices=REQUESTS_CHOICES, default=REQUESTS_EVERYONE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"@{self.handle}"
+
+    @property
+    def name(self):
+        return self.display_name or self.user.get_username()
+
+    @property
+    def initials(self):
+        parts = self.name.split()
+        letters = (parts[0][:1] + (parts[1][:1] if len(parts) > 1 else "")) if parts else "?"
+        return letters.upper()
+
+    @property
+    def avatar_color(self):
+        """A steady colour per person for the initials circle."""
+        return f"avatar-c{self.user_id % 6}"
+
+    def get_absolute_url(self):
+        return reverse("bank:profile", args=[self.handle])

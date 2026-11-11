@@ -4,7 +4,7 @@ from django import forms
 from django.forms.models import BaseInlineFormSet, inlineformset_factory
 
 from . import sources
-from .models import BookChapter, ImageTarget, Option, Question, QuestionBank, QuestionImage
+from .models import BookChapter, ImageTarget, Option, Profile, Question, QuestionBank, QuestionImage
 
 
 class ExamTemplateForm(forms.Form):
@@ -406,3 +406,57 @@ def option_formset(extra=2):
         extra=extra, can_delete=True,
         widgets={"text": forms.Textarea(attrs={"rows": 2})},
     )
+
+
+class ProfileForm(forms.ModelForm):
+    """Name, handle, university and privacy. The picture has its own form."""
+    handle = forms.CharField(max_length=21, help_text="3–20 letters, numbers or _. You can change it once every 30 days.")
+
+    class Meta:
+        model = Profile
+        fields = ["display_name", "handle", "university", "year", "stats_visibility", "who_can_request"]
+        labels = {
+            "display_name": "Name shown to others",
+            "year": "Year",
+            "stats_visibility": "Who can see my study stats",
+            "who_can_request": "Who can send me friend requests",
+        }
+        widgets = {"university": forms.Select(), "stats_visibility": forms.RadioSelect,
+                   "who_can_request": forms.RadioSelect}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["university"].widget.choices = (
+            [("", "Not set")] + [(key, name) for key, name, _ in sources.UNIVERSITIES] + [("other", "Other")]
+        )
+        self.fields["year"].empty_label = "Not set"
+        self.fields["display_name"].widget.attrs["placeholder"] = self.instance.user.get_username()
+
+    def clean_display_name(self):
+        return " ".join(self.cleaned_data["display_name"].split())
+
+    def clean_university(self):
+        value = self.cleaned_data["university"]
+        allowed = {""} | {key for key, _, _ in sources.UNIVERSITIES} | {"other"}
+        if value not in allowed:
+            raise forms.ValidationError("Choose a university from the list.")
+        return value
+
+    def clean_handle(self):
+        from . import profiles
+        handle = profiles.normalize_handle(self.cleaned_data["handle"])
+        if handle == self.instance.handle:
+            return handle
+        wait_until = profiles.next_handle_change(self.instance)
+        if wait_until:
+            raise forms.ValidationError(
+                f"You changed your handle recently. You can change it again on {wait_until.day} {wait_until:%B}."
+            )
+        problem = profiles.handle_problem(handle, self.instance)
+        if problem:
+            raise forms.ValidationError(problem)
+        return handle
+
+
+class AvatarForm(forms.Form):
+    picture = forms.ImageField(widget=forms.ClearableFileInput(attrs={"accept": "image/jpeg,image/png,image/webp"}))

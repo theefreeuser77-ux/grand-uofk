@@ -38,7 +38,7 @@
 <link rel="manifest" href="{% url 'bank:manifest' %}">
 <link rel="icon" type="image/svg+xml" href="{% static 'bank/icons/app-101.svg' %}">
 <link rel="apple-touch-icon" href="{% static 'bank/icons/app-101-192.png' %}">
-<link rel="stylesheet" href="{% static 'bank/style.css' %}?v=20261110-6">
+<link rel="stylesheet" href="{% static 'bank/style.css' %}?v=20261111-1">
 {% block head %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
@@ -72,8 +72,10 @@
       </div>
       {% endif %}
       <div class="nav-account">
-        <span class="nav-avatar" aria-hidden="true">{{ user.get_username|slice:":1"|upper }}</span>
-        <span class="nav-username">{{ user.get_username }}</span>
+        <a class="nav-profile" href="{% url 'bank:my_profile' %}"{% if here == "profile" and my_profile and request.resolver_match.kwargs.handle == my_profile.handle %} aria-current="page"{% endif %}>
+          {% include "bank/_avatar.html" with p=my_profile size="sm" small=True %}
+          <span class="nav-username">{{ my_profile.name }}</span>
+        </a>
         <form method="post" action="{% url 'bank:logout' %}" class="inline">{% csrf_token %}<button class="linkbtn">Log out</button></form>
       </div>
       {% else %}

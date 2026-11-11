@@ -31,6 +31,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 from . import parser, services, sources
 from . import ai_marking, figures, push, topic_ai
 from .forms import (
+    AvatarForm, ProfileForm,
     ExamTemplateForm, ImageQuestionForm, ImageUploadForm, QuestionForm, label_for_book, option_formset,
     validate_image_file,
 )
@@ -40,8 +41,9 @@ from .image_storage import (
 from .models import (
     AIExamAssessment, BackupSnapshot, Book, BookChapter, Comment, ImageTarget, Option, Question, QuestionBank, QuestionImage,
     ExamAttempt, ExamTemplate, ExamTemplateChapter, QuestionNote, SavedQuestion, Subject, SubjectSection,
-    PushPhrase, PushPreference, PushSettings, PushSubscription, SEMESTER_CHOICES,
+    PushPhrase, PushPreference, PushSettings, PushSubscription, SEMESTER_CHOICES, Profile,
 )
+from . import profiles
 from . import full_backup
 from .subject_backup import BackupError, restore_backup
 
@@ -2731,8 +2733,44 @@ def saved_remove(request, pk):
 
 @login_required
 def user_settings(request):
+    profile = profiles.profile_for(request.user)
     password_form = PasswordChangeForm(request.user)
-    if request.method == "POST" and request.POST.get("action") == "password":
+    profile_form = ProfileForm(instance=profile)
+    avatar_form = AvatarForm()
+    action = request.POST.get("action") if request.method == "POST" else None
+    if action == "profile":
+        old_handle = profile.handle
+        profile_form = ProfileForm(request.POST, instance=profile)
+        if profile_form.is_valid():
+            profile = profile_form.save(commit=False)
+            if profile.handle != old_handle:
+                profile.handle_changed_at = timezone.now()
+            try:
+                profile.save()
+            except IntegrityError:
+                profile_form.add_error("handle", "That handle is taken.")
+            else:
+                messages.success(request, "Profile saved.")
+                return redirect("bank:settings")
+        # The form changed the instance in memory; show the saved profile in the header.
+        profile = Profile.objects.select_related("user").get(pk=profile.pk)
+    elif action == "avatar":
+        avatar_form = AvatarForm(request.POST, request.FILES)
+        if avatar_form.is_valid():
+            try:
+                profiles.set_avatar(profile, avatar_form.cleaned_data["picture"])
+            except forms.ValidationError as error:
+                avatar_form.add_error("picture", error)
+            except (ImageStorageError, ValueError):
+                avatar_form.add_error("picture", "The picture couldn't be saved right now. Please try again.")
+            else:
+                messages.success(request, "Profile picture updated.")
+                return redirect("bank:settings")
+    elif action == "avatar_remove":
+        profiles.remove_avatar(profile)
+        messages.success(request, "Profile picture removed.")
+        return redirect("bank:settings")
+    if action == "password":
         password_form = PasswordChangeForm(request.user, request.POST)
         if password_form.is_valid():
             user = password_form.save()
@@ -2745,11 +2783,39 @@ def user_settings(request):
     pref = PushPreference.objects.filter(user=user).first()
     return render(request, "bank/settings.html", {
         "password_form": password_form,
+        "profile": profile,
+        "profile_form": profile_form,
+        "avatar_form": avatar_form,
+        "next_handle_change": profiles.next_handle_change(profile),
         "role": role,
         "password_open": password_form.is_bound,
         "push_ready": push.configured() and PushSettings.load().enabled,
         "push_on": bool(pref and pref.enabled),
         "vapid_public_key": settings.VAPID_PUBLIC_KEY,
+    })
+
+
+# ---------------------------------------------------------------- profiles
+@login_required
+def my_profile(request):
+    return redirect(profiles.profile_for(request.user).get_absolute_url())
+
+
+@login_required
+def profile_page(request, handle):
+    profile = get_object_or_404(
+        Profile.objects.select_related("user"), handle=profiles.normalize_handle(handle), user__is_active=True,
+    )
+    is_me = profile.user_id == request.user.pk
+    show_stats = profiles.can_see_stats(profile, request.user)
+    return render(request, "bank/profile.html", {
+        "profile": profile,
+        "is_me": is_me,
+        "show_stats": show_stats,
+        "stats": profiles.profile_stats(profile) if show_stats else None,
+        "university_name": dict((k, n) for k, n, _ in sources.UNIVERSITIES).get(
+            profile.university, "Other university" if profile.university == "other" else ""),
+        "profile_link": request.build_absolute_uri(profile.get_absolute_url()),
     })
 
 

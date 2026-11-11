@@ -11,6 +11,8 @@ def site(request):
     ctx = {"SITE_NAME": SITE_NAME}
     u = getattr(request, "user", None)
     if u is not None and u.is_authenticated:
+        from .profiles import profile_for
+        ctx["my_profile"] = profile_for(u)
         active_exam = ExamAttempt.objects.filter(
             user=u,
             submitted_at__isnull=True,

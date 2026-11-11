@@ -3,15 +3,85 @@
 {% block content %}
 <div class="settings-page">
   <header class="settings-account">
-    <span class="settings-avatar" aria-hidden="true">{{ request.user.get_username|slice:":1"|upper }}</span>
+    {% include "bank/_avatar.html" with p=profile size="md" %}
     <div class="settings-account-text">
       <h2 class="pagetitle">Settings</h2>
-      <p><strong>{{ request.user.get_username }}</strong> <span class="settings-role">{{ role }}</span></p>
+      <p><strong>{{ profile.name }}</strong> <span class="settings-role">{{ role }}</span></p>
+      <p class="mute">@{{ profile.handle }} · <a href="{{ profile.get_absolute_url }}">View my profile</a></p>
       <p class="mute">Member since {{ request.user.date_joined|date:"F Y" }}</p>
     </div>
   </header>
 
   <div class="settings-grid">
+    <section class="settings-section settings-wide" aria-labelledby="profile-title" id="profile">
+      <h3 id="profile-title">Profile</h3>
+      <p class="mute">How friends see you. Your login username stays the same.</p>
+      <div class="profile-edit">
+        <div class="profile-edit-picture">
+          {% include "bank/_avatar.html" with p=profile size="lg" alt="Your profile picture" %}
+          <form method="post" enctype="multipart/form-data" class="profile-picture-form">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="avatar">
+            <label class="btn" for="id_picture">{% if profile.avatar_url %}Change picture{% else %}Add a picture{% endif %}</label>
+            <input class="visually-hidden" type="file" name="picture" id="id_picture" accept="image/jpeg,image/png,image/webp" data-auto-submit>
+            <noscript><button class="btn pri" type="submit">Upload</button></noscript>
+            {{ avatar_form.picture.errors }}
+          </form>
+          {% if profile.avatar_url %}
+          <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="avatar_remove">
+            <button class="linkbtn" type="submit">Remove picture</button>
+          </form>
+          {% endif %}
+          <p class="mute settings-hint">JPG, PNG or WebP, up to 5 MB. It's cropped to a square, and location data in the photo is removed.</p>
+        </div>
+
+        <form method="post" class="profile-form" novalidate>
+          {% csrf_token %}
+          <input type="hidden" name="action" value="profile">
+          {{ profile_form.non_field_errors }}
+          <div class="field">
+            <label for="{{ profile_form.display_name.id_for_label }}">{{ profile_form.display_name.label }}</label>
+            {{ profile_form.display_name }}
+            {{ profile_form.display_name.errors }}
+          </div>
+          <div class="field">
+            <label for="{{ profile_form.handle.id_for_label }}">Handle</label>
+            <div class="handle-input"><span aria-hidden="true">@</span>{{ profile_form.handle }}</div>
+            {{ profile_form.handle.errors }}
+            <p class="mute settings-hint">{% if next_handle_change %}You can change it again on {{ next_handle_change|date:"j F" }}.{% else %}{{ profile_form.handle.help_text }}{% endif %}</p>
+          </div>
+          <div class="profile-form-row">
+            <div class="field">
+              <label for="{{ profile_form.university.id_for_label }}">University</label>
+              {{ profile_form.university }}
+              {{ profile_form.university.errors }}
+            </div>
+            <div class="field">
+              <label for="{{ profile_form.year.id_for_label }}">{{ profile_form.year.label }}</label>
+              {{ profile_form.year }}
+              {{ profile_form.year.errors }}
+            </div>
+          </div>
+          <fieldset class="settings-choices">
+            <legend>{{ profile_form.stats_visibility.label }}</legend>
+            <div class="settings-chips">
+              {% for choice in profile_form.stats_visibility %}<label class="settings-chip">{{ choice.tag }}<span>{{ choice.choice_label }}</span></label>{% endfor %}
+            </div>
+            <p class="mute settings-hint">Mock exams finished and questions saved. "My friends" works once friends arrive; until then it's the same as "Only me".</p>
+          </fieldset>
+          <fieldset class="settings-choices">
+            <legend>{{ profile_form.who_can_request.label }}</legend>
+            <div class="settings-chips">
+              {% for choice in profile_form.who_can_request %}<label class="settings-chip">{{ choice.tag }}<span>{{ choice.choice_label }}</span></label>{% endfor %}
+            </div>
+          </fieldset>
+          <button class="btn pri" type="submit">Save profile</button>
+        </form>
+      </div>
+    </section>
+
     <section class="settings-section" aria-labelledby="appearance-title">
       <h3 id="appearance-title">Appearance</h3>
       <p class="mute">The theme for this browser.</p>
@@ -101,6 +171,16 @@
 {% endblock %}
 {% block scripts %}
 {% include "bank/_password_toggle.html" %}
+<script>
+document.querySelectorAll("[data-auto-submit]").forEach(input => {
+  input.addEventListener("change", () => {
+    if (!input.files.length) return;
+    const label = input.form.querySelector("label.btn");
+    if (label) label.textContent = "Uploading…";
+    input.form.submit();
+  });
+});
+</script>
 <script>
 (() => {
   const box = document.querySelector("[data-push]");

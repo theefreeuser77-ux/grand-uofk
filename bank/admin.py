@@ -1,7 +1,7 @@
 from django.contrib import admin
 
 from .forms import OptionFormSet, QuestionForm
-from .models import Book, BookChapter, Comment, Option, Question, QuestionBank, Subject, SubjectSection
+from .models import Book, BookChapter, Comment, Option, Profile, Question, QuestionBank, Subject, SubjectSection
 
 
 class OptionInline(admin.TabularInline):
@@ -73,3 +73,25 @@ class CommentAdmin(admin.ModelAdmin):
     list_display = ("__str__", "user", "created_at", "resolved")
     list_filter = ("resolved",)
     readonly_fields = ("question", "user", "text", "created_at", "resolved_at", "resolved_by")
+
+
+@admin.register(Profile)
+class ProfileAdmin(admin.ModelAdmin):
+    list_display = ("handle", "display_name", "user", "friend_code", "university", "year", "has_picture")
+    search_fields = ("handle", "display_name", "user__username", "friend_code")
+    list_filter = ("university", "year")
+    readonly_fields = ("friend_code", "avatar_key", "avatar_url", "avatar_small_url", "created_at", "handle_changed_at")
+    actions = ["remove_pictures"]
+
+    @admin.display(boolean=True, description="Picture")
+    def has_picture(self, obj):
+        return bool(obj.avatar_key)
+
+    @admin.action(description="Remove profile picture")
+    def remove_pictures(self, request, queryset):
+        from .profiles import remove_avatar
+        count = 0
+        for profile in queryset.exclude(avatar_key=""):
+            remove_avatar(profile)
+            count += 1
+        self.message_user(request, f"Removed {count} profile picture{'s' if count != 1 else ''}.")

@@ -1,0 +1,66 @@
+{% extends "bank/base.html" %}
+{% block title %}{{ profile.name }} (@{{ profile.handle }}){% endblock %}
+{% block content %}
+<div class="profile-page">
+  <header class="profile-card">
+    {% include "bank/_avatar.html" with p=profile size="lg" alt=profile.name %}
+    <div class="profile-card-text">
+      <h2 class="profile-name">{{ profile.name }}</h2>
+      <p class="profile-handle">@{{ profile.handle }}</p>
+      {% if university_name or profile.year %}
+      <p class="profile-meta">{% if university_name %}{{ university_name }}{% endif %}{% if university_name and profile.year %} · {% endif %}{% if profile.year %}Year {{ profile.year }}{% endif %}</p>
+      {% endif %}
+      <p class="profile-meta">Member since {{ profile.user.date_joined|date:"F Y" }}</p>
+    </div>
+  </header>
+
+  {% if is_me %}
+  <section class="settings-section profile-share" aria-labelledby="share-title">
+    <h3 id="share-title">Your friend code</h3>
+    <p class="mute">Give friends this code or your link so they can find you.</p>
+    <div class="profile-code-row">
+      <code class="profile-code" aria-label="Friend code {{ profile.friend_code }}">{{ profile.friend_code }}</code>
+      <button class="btn" type="button" data-copy="{{ profile.friend_code }}">Copy code</button>
+      <button class="btn" type="button" data-copy="{{ profile_link }}" data-share-title="{{ profile.name }} on {{ SITE_NAME }}">Share link</button>
+      <span class="mute" role="status" aria-live="polite" data-copy-status></span>
+    </div>
+    <p class="settings-hint"><a href="{% url 'bank:settings' %}#profile">Edit profile →</a></p>
+  </section>
+  {% endif %}
+
+  <section class="settings-section" aria-labelledby="stats-title">
+    <h3 id="stats-title">Study</h3>
+    {% if show_stats %}
+    <div class="profile-stats">
+      <div><strong>{{ stats.exams_finished }}</strong><span>mock exam{{ stats.exams_finished|pluralize }} finished</span></div>
+      <div><strong>{{ stats.saved }}</strong><span>question{{ stats.saved|pluralize }} saved</span></div>
+    </div>
+    {% if is_me and profile.stats_visibility != "everyone" %}<p class="mute settings-hint">Only you can see these. Change that in <a href="{% url 'bank:settings' %}#profile">Settings</a>.</p>{% endif %}
+    {% else %}
+    <p class="mute">{{ profile.name }} keeps their study stats private.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(() => {
+  const status = document.querySelector("[data-copy-status]");
+  document.querySelectorAll("[data-copy]").forEach(button => {
+    button.addEventListener("click", async () => {
+      const text = button.dataset.copy;
+      if (button.dataset.shareTitle && navigator.share) {
+        try { await navigator.share({title: button.dataset.shareTitle, url: text}); return; }
+        catch (error) { if (error.name === "AbortError") return; }
+      }
+      try {
+        await navigator.clipboard.writeText(text);
+        if (status) status.textContent = "Copied.";
+      } catch (error) {
+        if (status) status.textContent = text;
+      }
+    });
+  });
+})();
+</script>
+{% endblock %}
