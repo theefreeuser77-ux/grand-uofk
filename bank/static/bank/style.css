@@ -4316,6 +4316,9 @@ tr.drop-active>td{background:var(--acc-soft)}
   .profile-edit{grid-template-columns:1fr}
   .profile-form-row{grid-template-columns:1fr}
   .site-nav .nav-account .nav-profile{width:auto;margin-left:0}
+  /* Phone drawer: one scrolling column (never wrap the Tools links into a hidden second column) */
+  .site-nav{flex-wrap:nowrap}
+  .site-nav>*{flex-shrink:0}
   /* Phone drawer: your profile sits at the top-left, above the links */
   .site-nav .nav-account{order:-1;margin:-56px 0 6px;padding:0 0 12px;border-top:0;border-bottom:1px solid var(--line);
     display:flex;align-items:center;gap:8px}
