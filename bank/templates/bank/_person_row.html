@@ -1,0 +1,18 @@
+{# One person in a list. kind = incoming | friend | outgoing | blocked decides the buttons. #}
+<li class="person-row">
+  <a class="person-link" href="{{ p.get_absolute_url }}">
+    {% include "bank/_avatar.html" with p=p size="md" small=True %}
+    <span class="person-text"><strong>{{ p.name }}</strong><span class="mute">@{{ p.handle }}</span></span>
+  </a>
+  <div class="person-actions">
+    {% if kind == "incoming" %}
+    <form method="post" action="{% url 'bank:friend_action' p.handle 'accept' %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.path }}"><button class="btn pri" type="submit">Accept</button></form>
+    <form method="post" action="{% url 'bank:friend_action' p.handle 'decline' %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.path }}"><button class="btn" type="submit">Decline</button></form>
+    {% elif kind == "outgoing" %}
+    <span class="mute person-note">Request sent</span>
+    <form method="post" action="{% url 'bank:friend_action' p.handle 'cancel' %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.path }}"><button class="linkbtn" type="submit">Cancel</button></form>
+    {% elif kind == "blocked" %}
+    <form method="post" action="{% url 'bank:friend_action' p.handle 'unblock' %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.path }}"><button class="btn" type="submit">Unblock</button></form>
+    {% endif %}
+  </div>
+</li>

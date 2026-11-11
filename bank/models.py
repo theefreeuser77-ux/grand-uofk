@@ -541,9 +541,70 @@ class Profile(models.Model):
         return letters.upper()
 
     @property
+    def university_name(self):
+        from .sources import UNIVERSITIES
+        if self.university == "other":
+            return "Other university"
+        return next((name for key, name, _ in UNIVERSITIES if key == self.university), "")
+
+    @property
     def avatar_color(self):
         """A steady colour per person for the initials circle."""
         return f"avatar-c{self.user_id % 6}"
 
     def get_absolute_url(self):
         return reverse("bank:profile", args=[self.handle])
+
+
+class FriendRequest(models.Model):
+    """One person asking another to be friends. A decline is never shown to the sender."""
+    PENDING, DECLINED = "pending", "declined"
+    STATUS_CHOICES = [(PENDING, "Pending"), (DECLINED, "Declined")]
+
+    from_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="friend_requests_sent")
+    to_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="friend_requests_received")
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=PENDING)
+    # The sender took back a request that had (unknown to them) been declined.
+    withdrawn = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    responded_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["from_user", "to_user"], name="unique_friend_request"),
+            models.CheckConstraint(condition=~models.Q(from_user=models.F("to_user")), name="no_self_friend_request"),
+        ]
+        indexes = [models.Index(fields=["to_user", "status"])]
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.from_user} → {self.to_user} ({self.status})"
+
+
+class Friendship(models.Model):
+    """Stored both ways (A→B and B→A), so 'my friends' is one simple query."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="friendships")
+    friend = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["user", "friend"], name="unique_friendship"),
+            models.CheckConstraint(condition=~models.Q(user=models.F("friend")), name="no_self_friendship"),
+        ]
+
+    def __str__(self):
+        return f"{self.user} ↔ {self.friend}"
+
+
+class Block(models.Model):
+    blocker = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="blocks_made")
+    blocked = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["blocker", "blocked"], name="unique_block"),
+            models.CheckConstraint(condition=~models.Q(blocker=models.F("blocked")), name="no_self_block"),
+        ]
+        ordering = ["-created_at"]

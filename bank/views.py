@@ -20,7 +20,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Count, Max, Q
 from django.core.cache import cache
 from django.contrib.sessions.models import Session
-from django.http import FileResponse, HttpResponse, HttpResponseForbidden, HttpResponseNotFound, JsonResponse
+from django.http import FileResponse, Http404, HttpResponse, HttpResponseForbidden, HttpResponseNotFound, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -41,9 +41,9 @@ from .image_storage import (
 from .models import (
     AIExamAssessment, BackupSnapshot, Book, BookChapter, Comment, ImageTarget, Option, Question, QuestionBank, QuestionImage,
     ExamAttempt, ExamTemplate, ExamTemplateChapter, QuestionNote, SavedQuestion, Subject, SubjectSection,
-    PushPhrase, PushPreference, PushSettings, PushSubscription, SEMESTER_CHOICES, Profile,
+    PushPhrase, PushPreference, PushSettings, PushSubscription, SEMESTER_CHOICES, Profile, FriendRequest,
 )
-from . import profiles
+from . import friends, profiles
 from . import full_backup
 from .subject_backup import BackupError, restore_backup
 
@@ -2801,22 +2801,101 @@ def my_profile(request):
     return redirect(profiles.profile_for(request.user).get_absolute_url())
 
 
+def _qr_svg(text):
+    import segno
+    return segno.make(text, error="m").svg_inline(scale=5, border=2, dark="#2d2d2d", light="#ffffff",
+                                                   omitsize=True, title="QR code for your profile")
+
+
 @login_required
 def profile_page(request, handle):
     profile = get_object_or_404(
         Profile.objects.select_related("user"), handle=profiles.normalize_handle(handle), user__is_active=True,
     )
+    if friends.has_blocked(profile.user, request.user):
+        raise Http404
     is_me = profile.user_id == request.user.pk
     show_stats = profiles.can_see_stats(profile, request.user)
+    state = friends.relationship(request.user, profile.user)
+    profile_link = request.build_absolute_uri(profile.get_absolute_url())
     return render(request, "bank/profile.html", {
         "profile": profile,
         "is_me": is_me,
+        "state": state,
+        "request_problem": friends.request_problem(request.user, profile.user) if state == friends.NONE else None,
+        "qr_svg": _qr_svg(profile_link) if is_me else "",
+        "friend_count": friends.friends_of(profile.user).count() if is_me or state == friends.FRIENDS else None,
         "show_stats": show_stats,
         "stats": profiles.profile_stats(profile) if show_stats else None,
-        "university_name": dict((k, n) for k, n, _ in sources.UNIVERSITIES).get(
-            profile.university, "Other university" if profile.university == "other" else ""),
-        "profile_link": request.build_absolute_uri(profile.get_absolute_url()),
+        "profile_link": profile_link,
     })
+
+
+@login_required
+def friends_home(request):
+    me = request.user
+    if request.method == "POST":
+        code = request.POST.get("code", "")
+        found = profiles.find_by_friend_code(code)
+        if found is None or friends.has_blocked(found.user, me):
+            messages.error(request, "No one has that friend code. Check it and try again.")
+            return redirect("bank:friends")
+        if found.user_id == me.pk:
+            messages.info(request, "That's your own code. Share it with friends so they can add you.")
+            return redirect("bank:friends")
+        return redirect(found.get_absolute_url())
+    return render(request, "bank/friends.html", {
+        "my_profile_obj": profiles.profile_for(me),
+        "incoming": list(friends.incoming(me)),
+        "outgoing": list(friends.outgoing(me)),
+        "friend_list": list(friends.friends_of(me)),
+        "blocked": list(friends.blocked_by(me)),
+    })
+
+
+FRIEND_ACTIONS = {"add", "cancel", "accept", "decline", "remove", "block", "unblock"}
+
+
+@login_required
+@require_POST
+def friend_action(request, handle, action):
+    if action not in FRIEND_ACTIONS:
+        raise Http404
+    other = get_object_or_404(Profile.objects.select_related("user"), handle=profiles.normalize_handle(handle))
+    me, them = request.user, other.user
+    if them.pk == me.pk:
+        raise Http404
+    try:
+        if action == "add":
+            state = friends.send_request(me, them)
+            messages.success(request, f"You're now friends with {other.name}." if state == friends.FRIENDS
+                             else f"Friend request sent to {other.name}.")
+        elif action == "cancel":
+            friends.cancel(me, them)
+            messages.info(request, "Friend request cancelled.")
+        elif action in ("accept", "decline"):
+            pending = FriendRequest.objects.filter(from_user=them, to_user=me, status=FriendRequest.PENDING).first()
+            if pending is None:
+                messages.info(request, "That request is no longer there.")
+            elif action == "accept":
+                friends.accept(me, pending)
+                messages.success(request, f"You're now friends with {other.name}.")
+            else:
+                friends.decline(me, pending)
+                messages.info(request, "Request declined. They won't be told.")
+        elif action == "remove":
+            friends.remove_friend(me, them)
+            messages.info(request, f"Removed {other.name} from your friends.")
+        elif action == "block":
+            friends.block(me, them)
+            messages.info(request, f"Blocked {other.name}. They can't see your profile or send you requests.")
+        elif action == "unblock":
+            friends.unblock(me, them)
+            messages.info(request, f"Unblocked {other.name}.")
+    except friends.FriendError as error:
+        messages.error(request, str(error))
+    fallback = reverse("bank:friends") if action in ("block", "unblock") else other.get_absolute_url()
+    return redirect(safe_next(request, fallback))
 
 
 # ---------------------------------------------------------------- notifications

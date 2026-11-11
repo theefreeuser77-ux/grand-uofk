@@ -1,0 +1,113 @@
+{% extends "bank/base.html" %}
+{% block title %}Friends{% endblock %}
+{% block content %}
+<div class="inner-page friends-page">
+  <section class="page-hero">
+    {% include "bank/_hero_peaks.html" %}
+    <p class="page-eyebrow">Your study circle</p>
+    <h2 class="page-title">Friends</h2>
+    <p class="page-lede">The classmates you study with. Open a friend to see their profile.</p>
+    <div class="page-stats">
+      <span><b>{{ friend_list|length }}</b> friend{{ friend_list|length|pluralize }}</span>
+      {% if incoming %}<span><b>{{ incoming|length }}</b> waiting for you</span>{% endif %}
+    </div>
+    <a class="page-hero-cta friends-add-link" href="#add-friend" data-open="add-friend">+ Add a friend <span aria-hidden="true">→</span></a>
+  </section>
+
+  {% if incoming %}
+  <section class="friends-waiting" aria-labelledby="incoming-title">
+    <h3 id="incoming-title" class="section-title">Waiting for you</h3>
+    <ul class="person-list">
+      {% for r in incoming %}{% include "bank/_person_row.html" with p=r.from_user.profile kind="incoming" %}{% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <section aria-labelledby="list-title">
+    <h3 id="list-title" class="section-title">Your friends</h3>
+    {% if friend_list %}
+    <div class="friend-cards">
+      {% for p in friend_list %}
+      <a class="friend-card" href="{{ p.get_absolute_url }}" style="--i:{{ forloop.counter0 }}">
+        {% include "bank/_avatar.html" with p=p size="lg" %}
+        <span class="friend-card-text">
+          <span class="friend-card-name">{{ p.name }}</span>
+          <span class="friend-card-handle">@{{ p.handle }}</span>
+          {% if p.university_name or p.year %}<span class="friend-card-meta">{{ p.university_name }}{% if p.university_name and p.year %} · {% endif %}{% if p.year %}Year {{ p.year }}{% endif %}</span>{% endif %}
+        </span>
+        <span class="subject-go friend-card-go" aria-hidden="true">Profile <span>→</span></span>
+        <svg class="subject-peaks" viewBox="0 0 300 60" preserveAspectRatio="none" aria-hidden="true"><path d="M0 60 L60 25 L95 42 L150 8 L205 40 L240 22 L300 50 L300 60Z"/></svg>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="friends-empty">
+      <svg viewBox="0 0 120 60" aria-hidden="true"><path d="M0 60 L30 22 L48 40 L72 6 L96 38 L120 60Z"/></svg>
+      <p><strong>No friends yet.</strong></p>
+      <p class="mute">Ask a classmate for their friend code, or send them your profile link.</p>
+      <a class="btn pri" href="#add-friend" data-open="add-friend">Add your first friend</a>
+    </div>
+    {% endif %}
+  </section>
+
+  <div class="friends-secondary">
+    <details class="friends-panel" id="add-friend"{% if not friend_list and not incoming %} open{% endif %}>
+      <summary><span>Add a friend</span><span class="mute">By friend code, link or QR</span></summary>
+      <div class="friends-panel-body">
+        <form method="post" class="friend-code-form">
+          {% csrf_token %}
+          <label for="friend-code">Their friend code</label>
+          <div class="friend-code-input">
+            <input id="friend-code" name="code" type="text" autocomplete="off" autocapitalize="characters"
+                   spellcheck="false" maxlength="12" placeholder="e.g. 4RV792" required>
+            <button class="btn pri" type="submit">Find</button>
+          </div>
+        </form>
+        <p class="mute settings-hint">Your code is <strong class="friend-code-inline">{{ my_profile_obj.friend_code }}</strong>. Friends can also scan your QR code or open your link. <a href="{{ my_profile_obj.get_absolute_url }}">Show them →</a></p>
+      </div>
+    </details>
+
+    {% if outgoing %}
+    <details class="friends-panel">
+      <summary><span>Requests you sent</span><span class="count-pill">{{ outgoing|length }}</span></summary>
+      <div class="friends-panel-body">
+        <ul class="person-list">
+          {% for r in outgoing %}{% include "bank/_person_row.html" with p=r.to_user.profile kind="outgoing" %}{% endfor %}
+        </ul>
+      </div>
+    </details>
+    {% endif %}
+
+    {% if blocked %}
+    <details class="friends-panel">
+      <summary><span>Blocked</span><span class="count-pill">{{ blocked|length }}</span></summary>
+      <div class="friends-panel-body">
+        <p class="mute settings-hint">They can't see your profile or send you requests.</p>
+        <ul class="person-list">
+          {% for b in blocked %}{% include "bank/_person_row.html" with p=b.blocked.profile kind="blocked" %}{% endfor %}
+        </ul>
+      </div>
+    </details>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(() => {
+  const open = id => {
+    const panel = document.getElementById(id);
+    if (!panel) return;
+    panel.open = true;
+    panel.scrollIntoView({behavior: "smooth", block: "start"});
+    const input = panel.querySelector("input[type=text]");
+    if (input) setTimeout(() => input.focus({preventScroll: true}), 350);
+  };
+  document.querySelectorAll("[data-open]").forEach(link => link.addEventListener("click", event => {
+    event.preventDefault();
+    open(link.dataset.open);
+  }));
+  if (location.hash === "#add-friend") open("add-friend");
+})();
+</script>
+{% endblock %}

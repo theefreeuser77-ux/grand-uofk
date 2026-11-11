@@ -38,7 +38,7 @@
 <link rel="manifest" href="{% url 'bank:manifest' %}">
 <link rel="icon" type="image/svg+xml" href="{% static 'bank/icons/app-101.svg' %}">
 <link rel="apple-touch-icon" href="{% static 'bank/icons/app-101-192.png' %}">
-<link rel="stylesheet" href="{% static 'bank/style.css' %}?v=20261111-1">
+<link rel="stylesheet" href="{% static 'bank/style.css' %}?v=20261111-4">
 {% block head %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
@@ -56,6 +56,7 @@
         <a href="{% url 'bank:home' %}"{% if here == "home" %} aria-current="page"{% endif %}>Home</a>
         <a href="{% url 'bank:library_home' %}"{% if here == "library_home" or here == "book_detail" %} aria-current="page"{% endif %}>Library</a>
         <a href="{% url 'bank:saved_home' %}"{% if here == "saved_home" %} aria-current="page"{% endif %}>Saved</a>
+        <a href="{% url 'bank:friends' %}"{% if here == "friends" %} aria-current="page"{% endif %}>Friends{% if friend_requests_count %}<span class="badge" aria-label="{{ friend_requests_count }} new request{{ friend_requests_count|pluralize }}">{{ friend_requests_count }}</span>{% endif %}</a>
         <a href="{% url 'bank:settings' %}"{% if here == "settings" %} aria-current="page"{% endif %}>Settings</a>
       </div>
       {% if perms.bank.add_question or perms.bank.change_question or user.is_staff %}

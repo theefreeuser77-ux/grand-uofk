@@ -13,6 +13,8 @@ def site(request):
     if u is not None and u.is_authenticated:
         from .profiles import profile_for
         ctx["my_profile"] = profile_for(u)
+        from .friends import incoming_count
+        ctx["friend_requests_count"] = incoming_count(u)
         active_exam = ExamAttempt.objects.filter(
             user=u,
             submitted_at__isnull=True,

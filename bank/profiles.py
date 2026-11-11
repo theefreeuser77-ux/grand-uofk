@@ -177,8 +177,12 @@ def _delete_quietly(key):
 def can_see_stats(profile, viewer):
     if viewer.pk == profile.user_id:
         return True
-    # "My friends" becomes meaningful once friends exist; until then it stays private.
-    return profile.stats_visibility == Profile.VISIBLE_EVERYONE
+    if profile.stats_visibility == Profile.VISIBLE_EVERYONE:
+        return True
+    if profile.stats_visibility == Profile.VISIBLE_FRIENDS:
+        from .friends import are_friends
+        return are_friends(profile.user, viewer)
+    return False
 
 
 def profile_stats(profile):

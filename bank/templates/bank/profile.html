@@ -1,18 +1,53 @@
 {% extends "bank/base.html" %}
 {% block title %}{{ profile.name }} (@{{ profile.handle }}){% endblock %}
 {% block content %}
-<div class="profile-page">
-  <header class="profile-card">
+<div class="inner-page profile-page">
+  <section class="page-hero profile-hero">
+    {% include "bank/_hero_peaks.html" %}
     {% include "bank/_avatar.html" with p=profile size="lg" alt=profile.name %}
-    <div class="profile-card-text">
-      <h2 class="profile-name">{{ profile.name }}</h2>
+    <div class="profile-hero-text">
+      <p class="page-eyebrow">{% if is_me %}Your profile{% elif state == "friends" %}Your friend{% else %}Student{% endif %}</p>
+      <h2 class="page-title">{{ profile.name }}</h2>
       <p class="profile-handle">@{{ profile.handle }}</p>
-      {% if university_name or profile.year %}
-      <p class="profile-meta">{% if university_name %}{{ university_name }}{% endif %}{% if university_name and profile.year %} · {% endif %}{% if profile.year %}Year {{ profile.year }}{% endif %}</p>
-      {% endif %}
-      <p class="profile-meta">Member since {{ profile.user.date_joined|date:"F Y" }}</p>
+      <div class="page-stats">
+        {% if profile.university_name %}<span>{{ profile.university_name }}</span>{% endif %}
+        {% if profile.year %}<span>Year <b>{{ profile.year }}</b></span>{% endif %}
+        {% if friend_count is not None %}<span><b>{{ friend_count }}</b> friend{{ friend_count|pluralize }}</span>{% endif %}
+        <span>Since {{ profile.user.date_joined|date:"M Y" }}</span>
+      </div>
     </div>
-  </header>
+  </section>
+
+  {% if not is_me %}
+  <section class="profile-actions" aria-label="Friendship">
+    {% with h=profile.handle %}
+    {% if state == "friends" %}
+      <span class="friend-state friend-state-ok">✓ Friends</span>
+      <form method="post" action="{% url 'bank:friend_action' h 'remove' %}" data-confirm="Remove {{ profile.name }} from your friends?">{% csrf_token %}<button class="btn" type="submit">Remove friend</button></form>
+    {% elif state == "received" %}
+      <span class="friend-state">{{ profile.name }} wants to be friends</span>
+      <form method="post" action="{% url 'bank:friend_action' h 'accept' %}">{% csrf_token %}<button class="btn pri" type="submit">Accept</button></form>
+      <form method="post" action="{% url 'bank:friend_action' h 'decline' %}">{% csrf_token %}<button class="btn" type="submit">Decline</button></form>
+    {% elif state == "sent" %}
+      <span class="friend-state">Request sent</span>
+      <form method="post" action="{% url 'bank:friend_action' h 'cancel' %}">{% csrf_token %}<button class="btn" type="submit">Cancel request</button></form>
+    {% elif state == "blocked" %}
+      <span class="friend-state">You blocked {{ profile.name }}</span>
+      <form method="post" action="{% url 'bank:friend_action' h 'unblock' %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.path }}"><button class="btn" type="submit">Unblock</button></form>
+    {% elif request_problem %}
+      <span class="friend-state mute">{{ request_problem }}</span>
+    {% else %}
+      <form method="post" action="{% url 'bank:friend_action' h 'add' %}">{% csrf_token %}<button class="btn pri" type="submit">Add friend</button></form>
+    {% endif %}
+    {% if state != "blocked" %}
+    <details class="profile-more">
+      <summary class="linkbtn" aria-label="More options">More</summary>
+      <form method="post" action="{% url 'bank:friend_action' h 'block' %}" data-confirm="Block {{ profile.name }}? This also removes them as a friend.">{% csrf_token %}<button class="linkbtn danger" type="submit">Block {{ profile.name }}</button></form>
+    </details>
+    {% endif %}
+    {% endwith %}
+  </section>
+  {% endif %}
 
   {% if is_me %}
   <section class="settings-section profile-share" aria-labelledby="share-title">
@@ -24,7 +59,11 @@
       <button class="btn" type="button" data-copy="{{ profile_link }}" data-share-title="{{ profile.name }} on {{ SITE_NAME }}">Share link</button>
       <span class="mute" role="status" aria-live="polite" data-copy-status></span>
     </div>
-    <p class="settings-hint"><a href="{% url 'bank:settings' %}#profile">Edit profile →</a></p>
+    <details class="profile-qr">
+      <summary class="btn">Show QR code</summary>
+      <div class="profile-qr-box">{{ qr_svg|safe }}<p class="mute settings-hint">A friend scans this with their phone camera to open your profile.</p></div>
+    </details>
+    <p class="settings-hint"><a href="{% url 'bank:friends' %}">Friends →</a> · <a href="{% url 'bank:settings' %}#profile">Edit profile →</a></p>
   </section>
   {% endif %}
 
@@ -43,6 +82,11 @@
 </div>
 {% endblock %}
 {% block scripts %}
+<script>
+document.querySelectorAll("form[data-confirm]").forEach(form => {
+  form.addEventListener("submit", event => { if (!confirm(form.dataset.confirm)) event.preventDefault(); });
+});
+</script>
 <script>
 (() => {
   const status = document.querySelector("[data-copy-status]");
