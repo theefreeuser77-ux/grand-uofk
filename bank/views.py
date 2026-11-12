@@ -28,7 +28,7 @@ from django.utils.http import url_has_allowed_host_and_scheme, urlencode
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_http_methods, require_POST
 
-from . import parser, services, sources
+from . import merging, parser, services, sources
 from . import ai_marking, figures, push, topic_ai
 from .forms import (
     AvatarForm, ProfileForm,
@@ -2928,6 +2928,48 @@ def push_tick(request, key):
 
 
 @staff_member_required
+def duplicate_questions(request):
+    """Copies of one question inside the same chapter (usually the same exam question from two
+    universities). Admins tick the sets to merge: one question stays, carrying every label."""
+    subjects = Subject.objects.order_by("name")
+    subject = subjects.filter(pk=request.GET.get("subject") or request.POST.get("subject") or 0).first()
+    if request.method == "POST":
+        moved, banks = {}, set()
+        with transaction.atomic():
+            for value in request.POST.getlist("group"):
+                ids = [int(x) for x in value.split(",") if x.isdigit()]
+                group = list(merging.mergeable(Question.objects.filter(pk__in=ids)))
+                if len(group) < 2 or len({q.bank_id for q in group}) != 1 or any(q.pk in moved for q in group):
+                    continue
+                group.sort(key=merging.keeper_order)
+                moved.update(merging.merge_group(group))
+                banks.add(group[0].bank_id)
+            merging.finish(moved, QuestionBank.objects.filter(pk__in=banks))
+        messages.success(request, f"Merged {len(moved)} cop{'y' if len(moved) == 1 else 'ies'} into the "
+                         "questions they repeat." if moved else "Nothing was merged.")
+        return redirect(f"{reverse('bank:duplicate_questions')}?subject={subject.pk if subject else ''}")
+
+    found = []
+    if subject:
+        banks = QuestionBank.objects.filter(subject=subject).order_by("semester", "title")
+        for bank in banks:
+            # Looser matches are listed too, unticked, for an admin to check by eye.
+            groups, conflicts = merging.find_groups(bank, similar=merging.SIMILAR_LOOSE)
+            if groups or conflicts:
+                found.append({
+                    "bank": bank, "conflicts": conflicts,
+                    "groups": [{"ids": ",".join(str(q.pk) for q in g), "questions": g, "sure": sure}
+                               for g, sure in groups],
+                })
+    return render(request, "bank/duplicate_questions.html", {
+        "subjects": subjects, "subject": subject, "found": found, "here": "duplicate_questions",
+        "n_groups": sum(len(f["groups"]) for f in found),
+        "n_sure": sum(1 for f in found for g in f["groups"] if g["sure"]),
+        "n_copies": sum(len(g["questions"]) - 1 for f in found for g in f["groups"]),
+    })
+
+
+@staff_member_required
 def push_admin(request):
     push_settings = PushSettings.load()
     if request.method == "POST":
@@ -3494,6 +3536,9 @@ def import_questions(request):
         parser.mark_duplicates(result.questions, services.existing_keys(book_chapter=book_chapter, is_lab=import_to_labs))
     elif deck:
         parser.mark_duplicates(result.questions, services.existing_keys(deck, is_lab=import_to_labs))
+        # A question this chapter already has (even worded a little differently) is not added
+        # again; the imported copy's label (its university) is added to the existing one.
+        merging.mark_existing(result.questions, deck, is_lab=import_to_labs)
     if book_chapter_id and not book_chapter:
         section_error = section_error or "That Library chapter no longer exists. Choose it again."
 
@@ -3534,9 +3579,10 @@ def import_questions(request):
                         for index, upload in sorted(assigned.items()):
                             images[index] = _create_question_image(deck, upload)
                             uploaded.append(images[index].public_id)
+                        report = {}
                         created, bad, dup = services.save_questions(
                             deck, result.questions, skip_dupes, is_lab=import_to_labs, images=images,
-                            book_chapter=book_chapter,
+                            book_chapter=book_chapter, report=report,
                         )
                 except Exception as error:
                     for public_id in uploaded:
@@ -3553,7 +3599,9 @@ def import_questions(request):
                     in_book = f" and the Library chapter “{book_chapter}”" if book_chapter else ""
                     messages.success(
                         request, f"Imported {created} question(s){with_images} into {destination}“{deck.path}”"
-                                 f"{in_book}. Skipped {bad} with errors and {dup} duplicate(s).")
+                                 f"{in_book}. Skipped {bad} with errors and {dup} duplicate(s)."
+                                 + (f" {report['labelled']} question(s) already in the chapter got the new label."
+                                    if report.get("labelled") else ""))
                     # Back to an empty import page, so the next chapter can be pasted straight away.
                     return redirect("bank:import")
 

@@ -157,9 +157,15 @@ def book_chapter_field():
 
 def label_choices(current=""):
     """Dropdown choices for a question's label: the university labels first, then every other
-    label already used on the site (books, labs and so on), plus the question's own label."""
-    used = set(Question.objects.exclude(label="").values_list("label", flat=True).distinct())
-    if current:
+    label already used on the site (books, labs and so on), plus the question's own label.
+    A shared question's label lists several universities; each one is offered on its own,
+    and the question's full list is kept as a choice so saving the form does not drop any."""
+    used = {
+        part for label in Question.objects.exclude(label="").values_list("label", flat=True).distinct()
+        for part in sources.split_labels(label)
+    }
+    shared = current if len(sources.split_labels(current)) > 1 else ""
+    if current and not shared:
         used.add(current)
     # The standard spelling of each university (the one the import prompts use) is always offered,
     # even before any question carries it; other spellings appear only if questions use them.
@@ -167,7 +173,10 @@ def label_choices(current=""):
     uni_lower = {l.lower() for _, _, labels in sources.UNIVERSITIES for l in labels}
     others = sorted((l for l in used if l.lower() not in uni_lower), key=str.lower)
     variants = sorted(l for l in used if l.lower() in uni_lower and l not in universities)
-    choices = [("", "No label"), ("Universities", [(l, l) for l in universities + variants])]
+    choices = [("", "No label")]
+    if shared:
+        choices.append(("Shared by several universities", [(shared, shared)]))
+    choices.append(("Universities", [(l, l) for l in universities + variants]))
     if others:
         choices.append(("Other labels", [(l, l) for l in others]))
     return choices

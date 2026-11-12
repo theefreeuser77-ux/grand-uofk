@@ -3680,3 +3680,132 @@ class PushNotificationTests(Base):
         self.assertEqual(self.client.get("/push/tick/wrong/").status_code, 404)
         with patch("bank.push.send_due", return_value=0):
             self.assertEqual(self.client.get("/push/tick/s3cret/").json(), {"sent": 0})
+
+
+class SharedQuestionTests(Base):
+    """A question several universities share is stored once with all their labels."""
+
+    def setUp(self):
+        super().setUp()
+        self.deck = QuestionBank.objects.create(subject=self.subject, semester=1, title="Nerves")
+        self.admin = User.objects.create_superuser("dup-admin", "a@example.com", "pw")
+
+    def mcq(self, stem, options, right, label="U of K"):
+        question = Question.objects.create(bank=self.deck, kind=Question.MCQ, stem=stem, label=label,
+                                           explanation="Because.")
+        for i, text in enumerate(options):
+            Option.objects.create(question=question, text=text, is_correct=(i == right), order=i)
+        return question
+
+    def test_label_helpers_and_filters(self):
+        from . import sources
+        self.assertEqual(sources.add_label("U of K", "Neelain"), "U of K, Neelain")
+        self.assertEqual(sources.add_label("U of K, Nile Valley", "Nile_Valley, uofk"), "U of K, Nile Valley")
+        shared = self.mcq("Shared?", ["a", "b"], 0, label="U of K, Neelain")
+        other = self.mcq("Other?", ["a", "b"], 0, label="Red_Sea")
+        plain = self.mcq("Plain?", ["a", "b"], 0, label="")
+        ids = lambda key: set(sources.apply(Question.objects.all(), key).values_list("pk", flat=True))
+        self.assertEqual(ids("uofk"), {shared.pk})
+        self.assertEqual(ids("neelain"), {shared.pk})
+        self.assertEqual(ids("other"), {other.pk, plain.pk})
+        self.assertEqual(ids("additional"), {plain.pk})
+        self.assertEqual(sources.visible_label(shared.label, self.student), "U of K")
+
+    def test_lookalike_with_a_different_answer_is_not_the_same(self):
+        from . import merging
+        sural = merging.Fingerprint(Question.MCQ, "The sural nerve is a branch of the:",
+                                    ["Tibial nerve", "Femoral nerve", "Obturator nerve"], [True, False, False])
+        saphenous = merging.Fingerprint(Question.MCQ, "The saphenous nerve is a branch of the:",
+                                        ["Tibial nerve", "Femoral nerve", "Obturator nerve"], [False, True, False])
+        reworded = merging.Fingerprint(Question.MCQ, "The sural nerve is a branch of the :",
+                                       ["Obturator nerve", "Tibial nerve.", "Femoral nerve"], [False, True, False])
+        self.assertFalse(merging.same(sural, saphenous))
+        self.assertTrue(merging.same(sural, reworded))
+        desc = lambda stem: merging.Fingerprint(Question.DESC, stem, [], [])
+        self.assertFalse(merging.same(desc("What is the function of VLDLs?"), desc("What is the function of HDLs?")))
+        self.assertFalse(merging.same(desc("List the anterior relations of the oesophagus."),
+                                      desc("List the posterior relations of the oesophagus.")))
+        self.assertTrue(merging.same(desc("What are the relations of the oesophagus?"),
+                                     desc("What are the relations of the esophagus?")))
+        self.assertFalse(merging.same(desc("Which of the following is found in prokaryotic cells?"),
+                                      desc("Which of the following is not found in prokaryotic cells?")))
+
+    def test_import_adds_the_label_to_the_existing_question(self):
+        existing = self.mcq("The sural nerve is a branch of the:", ["Tibial nerve", "Femoral nerve"], 0)
+        text = ("Q: The sural nerve is a branch of the\nA. Femoral nerve\nB. Tibial nerve\nANSWER: B\n"
+                "LABEL: Neelain\nEXPLANATION: x\n\nQ: A new question?\nA. Yes\nB. No\nANSWER: A\nLABEL: Neelain\n")
+        self.client.force_login(self.editor)
+        self.client.post(reverse("bank:import"), {
+            "action": "commit", "text": text, "subject": self.subject.pk, "semester": 1,
+            "deck_title": "Nerves", "skip_dupes": "1"})
+        self.assertEqual(self.deck.questions.count(), 2)
+        existing.refresh_from_db()
+        self.assertEqual(existing.label, "U of K, Neelain")
+
+    def test_merging_keeps_uofk_copy_and_moves_students_data(self):
+        from . import merging
+        theirs = self.mcq("Which nerve supplies the deltoid?", ["Axillary", "Radial"], 0, label="Neelain")
+        ours = self.mcq("Which nerve supplies the deltoid ?", ["Axillary", "Radial"], 0, label="U of K")
+        SavedQuestion.objects.create(user=self.student, question=theirs)
+        SavedQuestion.objects.create(user=self.student, question=ours)
+        QuestionNote.objects.create(user=self.student, question=theirs, text="C5 C6")
+        Comment.objects.create(question=theirs, user=self.student, text="typo")
+        attempt = ExamAttempt.objects.create(user=self.student, bank=self.deck, title="Try",
+                                             question_ids=[theirs.pk], responses={str(theirs.pk): {"selected": [1]}})
+        groups, conflicts = merging.find_groups(self.deck)
+        self.assertEqual([([q.pk for q in g], sure) for g, sure in groups], [([ours.pk, theirs.pk], True)])
+        merging.finish(merging.merge_group(groups[0][0]), [self.deck])
+        self.assertFalse(Question.objects.filter(pk=theirs.pk).exists())
+        ours.refresh_from_db()
+        self.assertEqual(ours.label, "U of K, Neelain")
+        self.assertEqual(SavedQuestion.objects.filter(user=self.student).count(), 1)
+        self.assertEqual(QuestionNote.objects.get(user=self.student).question_id, ours.pk)
+        self.assertEqual(Comment.objects.get().question_id, ours.pk)
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.question_ids, [ours.pk])
+        self.assertEqual(attempt.responses, {str(ours.pk): {"selected": [1]}})
+
+    def test_same_text_different_answer_is_listed_not_merged(self):
+        from . import merging
+        self.mcq("Which nerve supplies the deltoid?", ["Axillary", "Radial"], 0)
+        self.mcq("Which nerve supplies the deltoid?", ["Axillary", "Radial"], 1, label="Neelain")
+        groups, conflicts = merging.find_groups(self.deck)
+        self.assertEqual((groups, len(conflicts)), ([], 1))
+
+    def test_duplicates_page_is_for_admins_and_merges_ticked_sets(self):
+        a = self.mcq("Which nerve supplies the deltoid?", ["Axillary", "Radial"], 0)
+        b = self.mcq("Which nerve supplies the deltoid?", ["Axillary", "Radial"], 0, label="Red_Sea")
+        url = reverse("bank:duplicate_questions")
+        self.client.force_login(self.student)
+        self.assertEqual(self.client.get(url).status_code, 302)
+        self.client.force_login(self.admin)
+        page = self.client.get(url, {"subject": self.subject.pk})
+        self.assertContains(page, f'value="{a.pk},{b.pk}"')
+        self.client.post(url, {"subject": self.subject.pk, "group": f"{a.pk},{b.pk}"})
+        self.assertEqual(list(self.deck.questions.values_list("label", flat=True)), ["U of K, Red_Sea"])
+
+    def test_command_dry_run_changes_nothing(self):
+        self.mcq("Which nerve supplies the deltoid?", ["Axillary", "Radial"], 0)
+        self.mcq("Which nerve supplies the deltoid?", ["Axillary", "Radial"], 0, label="Red_Sea")
+        out = io.StringIO()
+        call_command("merge_duplicate_questions", stdout=out)
+        self.assertIn("1 question(s) would be removed", out.getvalue())
+        self.assertEqual(self.deck.questions.count(), 2)
+        call_command("merge_duplicate_questions", "--apply", stdout=io.StringIO())
+        self.assertEqual(self.deck.questions.count(), 1)
+
+    def test_loose_matches_are_listed_unticked_and_tf_statements_must_match(self):
+        from . import merging
+        tf = lambda statement: merging.Fingerprint(
+            Question.TF, "Determine whether the following statement is true or false:", [statement], [True])
+        self.assertFalse(merging.same(tf("Glucose is a hexose."), tf("Ribose is a pentose."), merging.SIMILAR_LOOSE))
+        a = self.mcq("Which one is the largest particulate of the cytoplasm?", ["Mitochondria", "Ribosome"], 0)
+        b = self.mcq("Which one is the largest particulate structure of the cytoplasm?",
+                     ["Mitochondria", "Ribosome"], 0, label="Neelain")
+        self.assertEqual(merging.find_groups(self.deck)[0], [])
+        groups, _ = merging.find_groups(self.deck, similar=merging.SIMILAR_LOOSE)
+        self.assertEqual([([q.pk for q in g], sure) for g, sure in groups], [([a.pk, b.pk], False)])
+        self.client.force_login(self.admin)
+        page = self.client.get(reverse("bank:duplicate_questions"), {"subject": self.subject.pk})
+        self.assertContains(page, f'name="group" value="{a.pk},{b.pk}">')
+        self.assertContains(page, "Looser match")

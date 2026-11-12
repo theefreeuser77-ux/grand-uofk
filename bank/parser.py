@@ -70,6 +70,7 @@ class ParsedQuestion:
     errors: list = field(default_factory=list)
     warnings: list = field(default_factory=list)
     duplicate_of: str = ""                           # filled in by mark_duplicates()
+    same_as: object = None                           # existing Question it repeats (merging.mark_existing)
 
     @property
     def ok(self):

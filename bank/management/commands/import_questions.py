@@ -2,7 +2,7 @@ from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
 
-from bank import parser, services
+from bank import merging, parser, services
 from bank.models import Subject, SubjectSection
 
 
@@ -51,6 +51,7 @@ class Command(BaseCommand):
                 raise CommandError(f"{path.name}: deck already belongs to another sub-subject.")
             if deck:
                 parser.mark_duplicates(res.questions, services.existing_keys(deck))
+                merging.mark_existing(res.questions, deck)
             errs = [q for q in res.questions if q.errors]
             for q in errs:
                 self.stderr.write(f"{path.name} line {q.line} (Q{q.number or '?'}): " + " ".join(q.errors))
@@ -58,5 +59,8 @@ class Command(BaseCommand):
                 self.stdout.write(f"{path.name}: {len(res.questions)} parsed, {len(errs)} with errors (dry run)")
                 continue
             deck = services.get_or_create_deck(subject, semester, title, section)
-            c, b, d = services.save_questions(deck, res.questions, not o["allow_duplicates"])
-            self.stdout.write(self.style.SUCCESS(f"{path.name} -> {deck.path}: {c} created, {b} invalid, {d} duplicates"))
+            report = {}
+            c, b, d = services.save_questions(deck, res.questions, not o["allow_duplicates"], report=report)
+            self.stdout.write(self.style.SUCCESS(
+                f"{path.name} -> {deck.path}: {c} created, {b} invalid, {d} duplicates"
+                f" ({report.get('labelled', 0)} existing question(s) got the new label)"))

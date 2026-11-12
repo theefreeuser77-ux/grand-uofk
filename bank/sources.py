@@ -3,7 +3,12 @@
 Admins (staff) can filter by every university, plus "Additional" for questions without a
 university label. Everyone else sees only "U of K" and "Other", so the other universities'
 names stay private to admins.
+
+A question that several universities share is stored once, and its label lists them all,
+separated by commas ("U of K, Neelain"). Each university's filter finds it.
 """
+import re
+
 from django.db.models import Q
 
 ALL = "all"
@@ -35,10 +40,39 @@ def _is_admin(user):
 
 
 def _labels_q(labels):
+    """Questions whose label list contains any of these labels."""
     q = Q()
     for label in labels:
-        q |= Q(label__iexact=label)
+        q |= Q(label__iregex=r"(^|,)\s*" + re.escape(label) + r"\s*(,|$)")
     return q
+
+
+def split_labels(label):
+    """The labels in a stored label, in order, without repeats: "U of K, Neelain" -> two."""
+    parts, seen = [], set()
+    for part in (label or "").split(","):
+        part = part.strip()
+        if part and part.lower() not in seen:
+            seen.add(part.lower())
+            parts.append(part)
+    return parts
+
+
+def _identity(label):
+    key = _KEY_BY_LABEL.get(label.lower())
+    return key or label.lower()
+
+
+def add_label(label, new):
+    """``label`` with the labels in ``new`` added. A university already listed under another
+    spelling ("Nile_Valley" / "Nile Valley") is not added twice."""
+    parts = split_labels(label)
+    have = {_identity(part) for part in parts}
+    for part in split_labels(new):
+        if _identity(part) not in have:
+            have.add(_identity(part))
+            parts.append(part)
+    return ", ".join(parts)
 
 
 def _any_university_q():
@@ -78,8 +112,13 @@ def filter_name(key, user):
 
 
 def source_of(label):
-    """Filter key of the university a label names, or "additional"."""
+    """Filter key of the university a single label names, or "additional"."""
     return _KEY_BY_LABEL.get((label or "").strip().lower(), ADDITIONAL)
+
+
+def sources_of(label):
+    """Filter keys of every university a (possibly multi-university) label names."""
+    return {source_of(part) for part in split_labels(label)} - {ADDITIONAL}
 
 
 def visible_label(label, user, from_book=False):
@@ -90,4 +129,4 @@ def visible_label(label, user, from_book=False):
     """
     if _is_admin(user) or from_book:
         return label
-    return "U of K" if source_of(label) == UOFK else ""
+    return "U of K" if UOFK in sources_of(label) else ""

@@ -1,0 +1,63 @@
+{% extends "bank/base.html" %}
+{% block title %}Duplicate questions{% endblock %}
+{% block content %}
+<main class="study-page dup-admin">
+  <section class="page-hero">
+    {% include "bank/_hero_peaks.html" %}
+    <h2 class="page-title">Duplicate questions</h2>
+    <p class="page-lede">The same question twice in one chapter, usually from two universities. Merging keeps one copy (U of K's if there is one) and gives it every university's label, so each university still has it but "All questions" shows it once. Students' saves, notes, comments and mock exams move to the copy that stays.</p>
+    <form method="get" class="dup-pick">
+      <label class="exam-field" for="dup-subject"><span>Subject</span>
+        <select id="dup-subject" name="subject" onchange="this.form.submit()">
+          <option value="">Choose a subject…</option>
+          {% for s in subjects %}<option value="{{ s.pk }}"{% if subject and s.pk == subject.pk %} selected{% endif %}>{{ s.name }}</option>{% endfor %}
+        </select></label>
+      <noscript><button class="exam-chip-btn" type="submit">Show</button></noscript>
+    </form>
+    {% if subject %}
+    <div class="page-stats">
+      <span><b>{{ n_groups }}</b> set{{ n_groups|pluralize }} of copies</span>
+      <span><b>{{ n_sure }}</b> sure match{{ n_sure|pluralize:"es" }}</span>
+      <span><b>{{ n_copies }}</b> extra cop{{ n_copies|pluralize:"y,ies" }}</span>
+    </div>
+    {% endif %}
+  </section>
+
+  {% if subject %}
+  {% if found %}
+  <div class="exam-alert"><p><b>Download a backup first</b> (Backup page). Sure matches are ticked; untick any that are really two different questions. Looser matches are unticked: read them and tick only real repeats. Then press Merge.</p></div>
+  <form method="post" onsubmit="return confirm('Merge the ticked sets? The extra copies will be deleted.')">
+    {% csrf_token %}<input type="hidden" name="subject" value="{{ subject.pk }}">
+    {% for item in found %}
+    <section class="exam-section">
+      <div class="study-section-heading"><div><p>SEMESTER {{ item.bank.semester }}</p><h2>{{ item.bank.title }}</h2></div></div>
+      {% for group in item.groups %}
+      <label class="dup-set{% if not group.sure %} is-loose{% endif %}">
+        <input type="checkbox" name="group" value="{{ group.ids }}"{% if group.sure %} checked{% endif %}>
+        <span class="dup-copies">
+          {% if not group.sure %}<span class="dup-loose-tag">Looser match — check before ticking</span>{% endif %}
+          {% for q in group.questions %}
+          <span class="dup-copy{% if forloop.first %} is-keeper{% endif %}">
+            <small>{% if forloop.first %}Stays{% else %}Removed{% endif %} · #{{ q.pk }} · {{ q.label|default:"no label" }}</small>
+            <b>{{ q.stem|truncatechars:220 }}</b>
+            {% if q.kind != "desc" %}<span class="dup-options">{% for o in q.options.all %}<span{% if o.is_correct %} class="is-right"{% endif %}>{{ forloop.counter }}. {{ o.text|truncatechars:80 }}</span>{% endfor %}</span>{% endif %}
+          </span>
+          {% endfor %}
+        </span>
+      </label>
+      {% endfor %}
+      {% for a, b in item.conflicts %}
+      <p class="dup-conflict">⚠ Same text, different answer — not merged, check by hand:
+        <a href="{% url 'bank:question_edit' a.pk %}">#{{ a.pk }}</a> ({{ a.label|default:"no label" }}) and
+        <a href="{% url 'bank:question_edit' b.pk %}">#{{ b.pk }}</a> ({{ b.label|default:"no label" }}): {{ a.stem|truncatechars:120 }}</p>
+      {% endfor %}
+    </section>
+    {% endfor %}
+    {% if n_groups %}<div class="push-actions dup-submit"><button class="exam-card-start" type="submit">Merge ticked sets</button></div>{% endif %}
+  </form>
+  {% else %}
+  <p class="exam-empty">No duplicates in {{ subject.name }}.</p>
+  {% endif %}
+  {% endif %}
+</main>
+{% endblock %}

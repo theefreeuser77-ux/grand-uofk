@@ -4448,3 +4448,18 @@ tr.drop-active>td{background:var(--acc-soft)}
 .code-pass-links a{padding:13px 10px;text-align:center;color:#ffcc5e;font-weight:700;font-size:.9rem;text-decoration:none}
 .code-pass-links a+a{border-left:1px solid rgba(233,171,17,.2)}
 .code-pass-links a:hover{background:rgba(233,171,17,.1)}
+
+/* Duplicate questions (staff) */
+.dup-pick{margin-top:14px;max-width:420px}
+.dup-set{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--card);margin-top:10px;cursor:pointer}
+.dup-set>input{margin-top:4px;flex:none}
+.dup-copies{display:grid;gap:10px;min-width:0;flex:1}
+.dup-copy{display:grid;gap:4px;padding-left:10px;border-left:3px solid var(--line);min-width:0;overflow-wrap:anywhere}
+.dup-copy.is-keeper{border-left-color:var(--ok)}
+.dup-copy small{color:var(--mute)}
+.dup-options{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:.88rem;color:var(--mute)}
+.dup-options .is-right{color:var(--ok);font-weight:600}
+.dup-conflict{margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--warn-soft);color:var(--warn);font-size:.92rem;overflow-wrap:anywhere}
+.dup-submit{position:sticky;bottom:12px;margin-top:16px}
+.dup-set.is-loose{border-style:dashed}
+.dup-loose-tag{justify-self:start;font-size:.8rem;font-weight:600;color:var(--warn);background:var(--warn-soft);border-radius:99px;padding:2px 10px}

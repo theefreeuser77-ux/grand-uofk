@@ -95,7 +95,8 @@ def _number_group(kind):
 
 
 @transaction.atomic
-def save_questions(bank, parsed, skip_duplicates=True, is_lab=False, images=None, book_chapter=None):
+def save_questions(bank, parsed, skip_duplicates=True, is_lab=False, images=None, book_chapter=None,
+                   report=None):
     """Persist questions with sequential MCQ/TF and descriptive numbering.
 
     Source NO/number labels are deliberately ignored. Existing questions are
@@ -104,7 +105,10 @@ def save_questions(bank, parsed, skip_duplicates=True, is_lab=False, images=None
     those questions are never skipped as duplicates, since their text alone
     (e.g. "Identify this tissue") does not identify them. With ``book_chapter``
     the questions are also listed in that Library chapter and labelled with the book.
+    A skipped question that repeats one already in the chapter (merging.mark_existing) adds
+    its label to that question instead; ``report["labelled"]`` counts those.
     """
+    from .merging import add_labels
     images = images or {}
     existing = list(bank.questions.order_by("id"))
     next_numbers = {}
@@ -118,12 +122,15 @@ def save_questions(bank, parsed, skip_duplicates=True, is_lab=False, images=None
             q.save(update_fields=["number"])
 
     created = bad = dup = 0
+    labelled = []
     for index, pq in enumerate(parsed):
         if not pq.ok:
             bad += 1
             continue
         if pq.duplicate_of and skip_duplicates and index not in images:
             dup += 1
+            if pq.same_as is not None and not book_chapter:
+                labelled.append(pq)
             continue
         group = _number_group(pq.kind)
         key = (is_lab, group)
@@ -140,6 +147,9 @@ def save_questions(bank, parsed, skip_duplicates=True, is_lab=False, images=None
             for i, (t, c) in enumerate(zip(pq.options, pq.correct))
         ])
         created += 1
+    added = add_labels(labelled)
+    if report is not None:
+        report["labelled"] = added
     return created, bad, dup
 
 
