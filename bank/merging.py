@@ -143,7 +143,8 @@ def mark_existing(parsed_questions, bank, is_lab=False):
             continue
         parsed.same_as = match
         where = f"already in this chapter ({match.number or f'#{match.pk}'})"
-        if parsed.label and sources.add_label(match.label, parsed.label) != match.label:
+        parsed.adds_label = bool(parsed.label) and sources.add_label(match.label, parsed.label) != match.label
+        if parsed.adds_label:
             where += f"; “{parsed.label}” will be added to its labels"
         parsed.duplicate_of = where
 

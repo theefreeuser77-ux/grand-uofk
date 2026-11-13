@@ -1,0 +1,1 @@
+{% if importable %}Import {{ importable }} question{{ importable|pluralize }}{% if n_labels %} and add {{ n_labels }} label{{ n_labels|pluralize }}{% endif %}{% else %}Add the label to {{ n_labels }} existing question{{ n_labels|pluralize }}{% endif %}

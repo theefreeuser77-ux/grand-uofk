@@ -71,6 +71,7 @@ class ParsedQuestion:
     warnings: list = field(default_factory=list)
     duplicate_of: str = ""                           # filled in by mark_duplicates()
     same_as: object = None                           # existing Question it repeats (merging.mark_existing)
+    adds_label: bool = False                         # importing it adds its label to that question
 
     @property
     def ok(self):

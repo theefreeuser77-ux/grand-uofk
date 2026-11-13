@@ -3810,6 +3810,16 @@ class SharedQuestionTests(Base):
         self.assertContains(page, f'name="group" value="{a.pk},{b.pk}">')
         self.assertContains(page, "Looser match")
 
+    def test_import_button_shows_when_every_question_only_adds_a_label(self):
+        self.mcq("The sural nerve is a branch of the:", ["Tibial nerve", "Femoral nerve"], 0)
+        text = "Q: The sural nerve is a branch of the:\nA. Tibial nerve\nB. Femoral nerve\nANSWER: A\nLABEL: Red_Sea\n"
+        self.client.force_login(self.editor)
+        data = {"text": text, "subject": self.subject.pk, "semester": 1, "deck_title": "Nerves", "skip_dupes": "1"}
+        page = self.client.post(reverse("bank:import"), {**data, "action": "preview"})
+        self.assertContains(page, "Add the label to 1 existing question")
+        self.client.post(reverse("bank:import"), {**data, "action": "commit"})
+        self.assertEqual(list(self.deck.questions.values_list("label", flat=True)), ["U of K, Red_Sea"])
+
 
 class MoveQuestionsTests(Base):
     """Admins re-sort many questions at once from an "id | semester | chapter" list."""
@@ -3847,3 +3857,4 @@ class MoveQuestionsTests(Base):
         self.assertContains(page, "No question with this id")
         self.q.refresh_from_db()
         self.assertEqual(self.q.bank, self.hormones)
+

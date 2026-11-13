@@ -72,7 +72,7 @@
   </p>
   <p class="row" style="justify-content:flex-start">
     <button class="btn" name="action" value="preview">Preview</button>
-    {% if previewed and importable %}<button class="btn pri" name="action" value="commit" data-import-button>Import {{ importable }} question{{ importable|pluralize }}</button>{% endif %}
+    {% if previewed and importable or previewed and n_labels %}<button class="btn pri" name="action" value="commit" data-import-button data-labels="{{ n_labels|default:0 }}">{% include "bank/_import_button_text.html" %}</button>{% endif %}
   </p>
 </form>
 {{ decks_json|json_script:"decks-data" }}
@@ -91,7 +91,8 @@
     <b>{{ rows|length }}</b> parsed ·
     <span class="okc"><b>{{ importable }}</b> ready</span> ·
     <span class="badc"><b>{{ n_errors }}</b> with errors</span> ·
-    <span class="warnc"><b>{{ n_dupes }}</b> duplicate{{ n_dupes|pluralize }}</span>
+    <span class="warnc"><b>{{ n_dupes }}</b> duplicate{{ n_dupes|pluralize }}</span>{% if n_labels %} ·
+    <span class="okc"><b>{{ n_labels }}</b> will add {{ n_labels|pluralize:"its,their" }} label to {{ n_labels|pluralize:"a question,questions" }} already here</span>{% endif %}
   </p>
   {% if stray %}
   <div class="fb error">Text found before the first “Q:” line was ignored (line {{ stray.0.0 }}: “{{ stray.0.1|truncatechars:60 }}”).</div>
@@ -141,7 +142,7 @@
     {% endfor %}
   </table>
   </div>
-  {% if importable %}<p class="row" style="justify-content:flex-start"><button class="btn pri" form="import-form" name="action" value="commit" data-import-button>Import {{ importable }} question{{ importable|pluralize }}</button></p>{% endif %}
+  {% if importable or n_labels %}<p class="row" style="justify-content:flex-start"><button class="btn pri" form="import-form" name="action" value="commit" data-import-button data-labels="{{ n_labels|default:0 }}">{% include "bank/_import_button_text.html" %}</button></p>{% endif %}
 </div>
 {% endif %}
 {% endblock %}
@@ -296,7 +297,11 @@
     const count = [...document.querySelectorAll('tr[data-ok="1"]')]
       .filter(tr => tr.dataset.skipped !== '1' || tr.dataset.hasImage === '1').length;
     document.querySelectorAll('[data-import-button]').forEach(button => {
-      button.textContent = `Import ${count} question${count === 1 ? '' : 's'}`;
+      const labels = Number(button.dataset.labels || 0);
+      const s = n => n === 1 ? '' : 's';
+      button.textContent = count
+        ? `Import ${count} question${s(count)}` + (labels ? ` and add ${labels} label${s(labels)}` : '')
+        : `Add the label to ${labels} existing question${s(labels)}`;
       button.disabled = problems.length > 0;
     });
   };

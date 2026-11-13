@@ -3690,6 +3690,8 @@ def import_questions(request):
         "deck_exists": deck, "rows": rows, "previewed": True,
         "import_to_labs": import_to_labs,
         "importable": sum(1 for r in rows if r["q"].ok and not r["skipped"]),
+        # Repeats of questions already in the chapter that only add their university's label.
+        "n_labels": sum(1 for r in rows if r["skipped"] and r["q"].adds_label),
         "n_errors": sum(1 for r in rows if not r["q"].ok),
         "n_dupes": sum(1 for r in rows if r["q"].duplicate_of),
         "stray": result.stray,
