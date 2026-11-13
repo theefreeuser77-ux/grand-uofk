@@ -2,7 +2,7 @@
 
 Export covers accounts (with their passwords' hashes, groups and permissions), every subject,
 deck, question, option, image reference, library book, saved question, exam template, exam
-attempt and AI record. Students' private notes and comments are left out of downloads but kept
+attempt and AI record, plus profiles and friends and notification settings and devices. Students' private notes and comments are left out of downloads but kept
 in the automatic restore points, so restoring one puts the site back exactly as it was.
 
 Replacing first saves the current database as a restore point (a BackupSnapshot row, which is
@@ -35,6 +35,10 @@ MODELS = [
     "bank.QuestionImage", "bank.Question", "bank.Option", "bank.ImageTarget", "bank.SavedQuestion",
     "bank.ExamTemplate", "bank.ExamTemplateChapter", "bank.ExamAttempt", "bank.AIExamAssessment",
     "bank.AIRequestQuota",
+    # Friends: profiles (handle, friend code, picture), requests, friendships and blocks.
+    "bank.Profile", "bank.FriendRequest", "bank.Friendship", "bank.Block",
+    # Notifications: admin messages and settings, each student's choice and their devices.
+    "bank.PushPhrase", "bank.PushSettings", "bank.PushPreference", "bank.PushSubscription",
 ]
 PRIVATE_MODELS = ["bank.QuestionNote", "bank.Comment"]
 # Emptied on replace but never backed up: they would point at the old accounts.

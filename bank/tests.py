@@ -424,6 +424,48 @@ class FullBackupTests(Base):
         self.assertTrue(Question.objects.filter(stem="Keep me").exists())
         self.assertFalse(BackupSnapshot.objects.exists())
 
+    def test_backup_carries_friends_and_notifications(self):
+        from .models import Block, FriendRequest, Friendship, Profile, PushPhrase, PushPreference, PushSettings, PushSubscription
+        from .profiles import profile_for
+        friend = User.objects.create_user("pal", password="pw")
+        stranger = User.objects.create_user("odd", password="pw")
+        mine = profile_for(self.student)
+        mine.display_name = "Stu Dent"
+        mine.save(update_fields=["display_name"])
+        code = mine.friend_code
+        Friendship.objects.create(user=self.student, friend=friend)
+        Friendship.objects.create(user=friend, friend=self.student)
+        FriendRequest.objects.create(from_user=stranger, to_user=self.student)
+        Block.objects.create(blocker=self.student, blocked=stranger)
+        phrase = PushPhrase.objects.create(text="Time to revise!")
+        settings_row = PushSettings.load()
+        settings_row.interval_hours = 12
+        settings_row.save()
+        PushPreference.objects.create(user=self.student, enabled=True, last_phrase=phrase)
+        PushSubscription.objects.create(user=self.student, endpoint="https://push.example/abc", p256dh="k", auth="a")
+
+        backup = self.download().content
+        counts = full_backup.decode(backup)["counts"]
+        for label in ("bank.Profile", "bank.Friendship", "bank.FriendRequest", "bank.Block",
+                      "bank.PushPhrase", "bank.PushSettings", "bank.PushPreference", "bank.PushSubscription"):
+            self.assertGreater(counts[label], 0, label)
+
+        Friendship.objects.all().delete()
+        PushSubscription.objects.all().delete()
+        PushPhrase.objects.all().delete()
+        self.student.delete()
+        self.upload(backup)
+
+        student = User.objects.get(username="stu")
+        self.assertEqual(Profile.objects.get(user=student).friend_code, code)
+        self.assertEqual(Profile.objects.get(user=student).display_name, "Stu Dent")
+        self.assertEqual(Friendship.objects.count(), 2)
+        self.assertTrue(FriendRequest.objects.filter(to_user=student).exists())
+        self.assertTrue(Block.objects.filter(blocker=student).exists())
+        self.assertEqual(PushPreference.objects.get(user=student).last_phrase.text, "Time to revise!")
+        self.assertEqual(PushSubscription.objects.get().endpoint, "https://push.example/abc")
+        self.assertEqual(PushSettings.load().interval_hours, 12)
+
     def test_only_the_last_five_restore_points_are_kept(self):
         for _ in range(7):
             full_backup.save_snapshot("test")
