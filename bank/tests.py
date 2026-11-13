@@ -3809,3 +3809,41 @@ class SharedQuestionTests(Base):
         page = self.client.get(reverse("bank:duplicate_questions"), {"subject": self.subject.pk})
         self.assertContains(page, f'name="group" value="{a.pk},{b.pk}">')
         self.assertContains(page, "Looser match")
+
+
+class MoveQuestionsTests(Base):
+    """Admins re-sort many questions at once from an "id | semester | chapter" list."""
+
+    def setUp(self):
+        super().setUp()
+        self.admin = User.objects.create_superuser("mover", "m@example.com", "pw")
+        self.hormones = QuestionBank.objects.create(subject=self.subject, semester=3, title="Hormones")
+        self.enzymes = QuestionBank.objects.create(subject=self.subject, semester=2, title="Enzymes")
+        other = Subject.objects.create(name="Anatomy")
+        self.other_deck = QuestionBank.objects.create(subject=other, semester=2, title="Enzymes")
+        self.q = Question.objects.create(bank=self.hormones, kind=Question.DESC, stem="Define Km.", answer="x",
+                                         label="U of K, Neelain")
+        self.url = reverse("bank:move_questions")
+
+    def test_students_cannot_open_it(self):
+        self.client.force_login(self.student)
+        self.assertEqual(self.client.get(self.url).status_code, 302)
+
+    def test_preview_then_apply_moves_within_the_subject(self):
+        self.client.force_login(self.admin)
+        text = f"{self.q.pk} | 2 | enzymes\n"
+        page = self.client.post(self.url, {"text": text, "action": "preview"})
+        self.assertContains(page, "Semester 2 › Enzymes")
+        self.q.refresh_from_db()
+        self.assertEqual(self.q.bank, self.hormones)
+        self.client.post(self.url, {"text": text, "action": "apply"})
+        self.q.refresh_from_db()
+        self.assertEqual((self.q.bank, self.q.label), (self.enzymes, "U of K, Neelain"))
+
+    def test_any_bad_line_blocks_the_whole_move(self):
+        self.client.force_login(self.admin)
+        text = f"{self.q.pk} | 2 | Enzymes\n999999 | 2 | Enzymes\n{self.q.pk} | 4 | Nowhere\n"
+        page = self.client.post(self.url, {"text": text, "action": "apply"})
+        self.assertContains(page, "No question with this id")
+        self.q.refresh_from_db()
+        self.assertEqual(self.q.bank, self.hormones)

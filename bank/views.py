@@ -42,6 +42,7 @@ from .models import (
     AIExamAssessment, BackupSnapshot, Book, BookChapter, Comment, ImageTarget, Option, Question, QuestionBank, QuestionImage,
     ExamAttempt, ExamTemplate, ExamTemplateChapter, QuestionNote, SavedQuestion, Subject, SubjectSection,
     PushPhrase, PushPreference, PushSettings, PushSubscription, SEMESTER_CHOICES, Profile, FriendRequest,
+    TopicSearch,
 )
 from . import friends, profiles
 from . import full_backup
@@ -2925,6 +2926,68 @@ def push_tick(request, key):
     if not expected or not hmac.compare_digest(key, expected):
         return HttpResponseNotFound()
     return JsonResponse({"sent": push.send_due()})
+
+
+MOVE_LINE = re.compile(r"^\s*#?(\d+)\s*\|\s*(\d+)\s*\|\s*(.+?)\s*$")
+
+
+def _move_rows(text):
+    """Parse "question id | semester | chapter title" lines into preview rows. A question can
+    only move to an existing chapter of its own subject."""
+    rows, seen = [], set()
+    for number, line in enumerate(text.splitlines(), 1):
+        if not line.strip() or line.lstrip().startswith("//"):
+            continue
+        match = MOVE_LINE.match(line)
+        if not match:
+            rows.append({"line": number, "text": line.strip()[:120], "error": "Expected: id | semester | chapter"})
+            continue
+        pk, semester, title = int(match[1]), int(match[2]), match[3]
+        row = {"line": number, "pk": pk, "semester": semester, "title": title, "error": ""}
+        question = Question.objects.select_related("bank__subject").filter(pk=pk).first()
+        if question is None:
+            row["error"] = "No question with this id."
+        elif pk in seen:
+            row["error"] = "This id appears twice."
+        else:
+            row["question"] = question
+            target = services.find_deck(question.bank.subject, semester, title) if question.bank.subject else None
+            if target is None:
+                row["error"] = f"No chapter “{title}” in semester {semester} of {question.bank.subject}."
+            elif target.pk == question.bank_id:
+                row["same"] = True
+            row["target"] = target
+        seen.add(pk)
+        rows.append(row)
+    return rows
+
+
+@staff_member_required
+def move_questions(request):
+    """Move many questions to other chapters of the same subject from a pasted list."""
+    text = request.POST.get("text", "")
+    upload = request.FILES.get("file")
+    if upload:
+        text = upload.read().decode("utf-8-sig", errors="replace")
+    rows = _move_rows(text) if text.strip() else []
+    errors = [r for r in rows if r["error"]]
+    todo = [r for r in rows if not r["error"] and not r.get("same")]
+    if request.method == "POST" and request.POST.get("action") == "apply":
+        if errors:
+            messages.error(request, "Fix the lines with problems first; nothing was moved.")
+        elif not todo:
+            messages.error(request, "There is nothing to move.")
+        else:
+            with transaction.atomic():
+                for row in todo:
+                    Question.objects.filter(pk=row["pk"]).update(bank=row["target"], updated_at=timezone.now())
+                TopicSearch.objects.filter(bank__in={r["question"].bank_id for r in todo} | {r["target"].pk for r in todo}).delete()
+            messages.success(request, f"Moved {len(todo)} question{'s' if len(todo) != 1 else ''}.")
+            return redirect("bank:move_questions")
+    return render(request, "bank/move_questions.html", {
+        "text": text, "rows": rows, "errors": errors, "todo": todo, "here": "move_questions",
+        "n_same": sum(1 for r in rows if r.get("same")),
+    })
 
 
 @staff_member_required

@@ -1,0 +1,49 @@
+{% extends "bank/base.html" %}
+{% block title %}Move questions{% endblock %}
+{% block content %}
+<main class="study-page dup-admin">
+  <section class="page-hero">
+    {% include "bank/_hero_peaks.html" %}
+    <h2 class="page-title">Move questions</h2>
+    <p class="page-lede">Re-sort many questions at once. One line per question: <code>id | semester | chapter</code>, for example <code>4463 | 2 | Biochemical techniques</code>. A question only moves to an existing chapter of its own subject; everything else about it (labels, saves, notes) stays the same.</p>
+    {% if rows %}
+    <div class="page-stats">
+      <span><b>{{ todo|length }}</b> to move</span>
+      <span><b>{{ errors|length }}</b> with problems</span>
+      {% if n_same %}<span><b>{{ n_same }}</b> already there</span>{% endif %}
+    </div>
+    {% endif %}
+  </section>
+
+  <form method="post" enctype="multipart/form-data" class="exam-section">
+    {% csrf_token %}
+    <label class="exam-field" for="move-text"><span>Moves</span>
+      <textarea id="move-text" name="text" rows="8" spellcheck="false">{{ text }}</textarea></label>
+    <label class="exam-field" for="move-file"><span>…or upload a .txt file</span>
+      <input id="move-file" type="file" name="file" accept=".txt,text/plain"></label>
+    <div class="push-actions">
+      <button class="exam-chip-btn" type="submit" name="action" value="preview">Preview</button>
+      {% if todo and not errors %}<button class="exam-card-start" type="submit" name="action" value="apply"
+        onclick="return confirm('Move {{ todo|length }} question(s)?')">Move {{ todo|length }} question{{ todo|length|pluralize }}</button>{% endif %}
+    </div>
+  </form>
+
+  {% if rows %}
+  <section class="exam-section">
+    {% for r in rows %}
+    <div class="dup-set{% if r.error %} is-loose{% endif %}">
+      <span class="dup-copies">
+        {% if r.error %}<span class="dup-loose-tag">Line {{ r.line }}: {{ r.error }}</span>{% endif %}
+        {% if r.question %}
+        <span class="dup-copy{% if not r.error and not r.same %} is-keeper{% endif %}">
+          <small>#{{ r.pk }} · {{ r.question.bank.path }} → {% if r.target %}Semester {{ r.target.semester }} › {{ r.target.title }}{% else %}{{ r.title }}{% endif %}{% if r.same %} (already there){% endif %}</small>
+          <b>{{ r.question.stem|truncatechars:200 }}</b>
+        </span>
+        {% elif r.text %}<small>{{ r.text }}</small>{% endif %}
+      </span>
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+</main>
+{% endblock %}

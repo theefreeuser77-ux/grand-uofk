@@ -93,5 +93,6 @@ urlpatterns = [
     path("push/unsubscribe/", views.push_unsubscribe, name="push_unsubscribe"),
     path("push/admin/", views.push_admin, name="push_admin"),
     path("tools/duplicates/", views.duplicate_questions, name="duplicate_questions"),
+    path("tools/move/", views.move_questions, name="move_questions"),
     path("push/tick/<str:key>/", views.push_tick, name="push_tick"),
 ]

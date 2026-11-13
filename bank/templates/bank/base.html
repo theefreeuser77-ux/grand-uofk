@@ -70,6 +70,7 @@
         <a href="{% url 'bank:subject_backup' %}"{% if here == "subject_backup" %} aria-current="page"{% endif %}>Backup</a>
         <a href="{% url 'bank:push_admin' %}"{% if here == "push_admin" %} aria-current="page"{% endif %}>Notifications</a>
         <a href="{% url 'bank:duplicate_questions' %}"{% if here == "duplicate_questions" %} aria-current="page"{% endif %}>Duplicates</a>
+        <a href="{% url 'bank:move_questions' %}"{% if here == "move_questions" %} aria-current="page"{% endif %}>Move questions</a>
         <a href="{% url 'admin:index' %}">Admin</a>{% endif %}
       </div>
       {% endif %}
