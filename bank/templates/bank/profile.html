@@ -4,7 +4,29 @@
 <div class="inner-page profile-page">
   <section class="page-hero profile-hero">
     {% include "bank/_hero_peaks.html" %}
+    {% if profile.avatar_url %}
+    <button class="avatar-zoom" type="button" aria-label="Show {{ profile.name }}’s picture" aria-haspopup="dialog">
+      {% include "bank/_avatar.html" with p=profile size="lg" alt="" %}
+    </button>
+    <dialog class="avatar-dialog" aria-label="{{ profile.name }}’s picture">
+      <img src="{{ profile.avatar_url }}" alt="{{ profile.name }}" loading="lazy" decoding="async">
+      <button class="avatar-dialog-close" type="button" aria-label="Close">×</button>
+    </dialog>
+    <script>
+      (() => {
+        const opener = document.querySelector(".avatar-zoom");
+        const dialog = document.querySelector(".avatar-dialog");
+        if (!opener || !dialog || !dialog.showModal) return;
+        opener.addEventListener("click", () => dialog.showModal());
+        dialog.addEventListener("click", (event) => {
+          if (event.target === dialog || event.target.closest(".avatar-dialog-close")) dialog.close();
+        });
+        dialog.addEventListener("close", () => opener.focus());
+      })();
+    </script>
+    {% else %}
     {% include "bank/_avatar.html" with p=profile size="lg" alt=profile.name %}
+    {% endif %}
     <div class="profile-hero-text">
       <p class="page-eyebrow">{% if is_me %}Your profile{% elif state == "friends" %}Your friend{% else %}Student{% endif %}</p>
       <h2 class="page-title">{{ profile.name }}</h2>

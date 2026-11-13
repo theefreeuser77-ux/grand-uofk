@@ -4395,7 +4395,16 @@ tr.drop-active>td{background:var(--acc-soft)}
 
 /* Profile page */
 .profile-hero{grid-template-columns:auto 1fr;align-items:center;column-gap:22px}
-.profile-hero>.avatar{box-shadow:0 0 0 3px #e9ab11,0 12px 26px -12px rgba(0,0,0,.6)}
+.profile-hero>.avatar,.avatar-zoom .avatar{box-shadow:0 0 0 3px #e9ab11,0 12px 26px -12px rgba(0,0,0,.6)}
+.avatar-zoom{padding:0;border:0;border-radius:50%;background:none;cursor:zoom-in;transition:transform .15s ease}
+.avatar-zoom:hover{transform:scale(1.04)}
+.avatar-zoom:focus-visible{outline:3px solid #fffaec;outline-offset:4px}
+.avatar-dialog{position:fixed;padding:0;border:0;border-radius:18px;background:transparent;max-width:min(92vw,560px);overflow:visible}
+.avatar-dialog::backdrop{background:rgba(0,0,0,.78)}
+.avatar-dialog img{display:block;width:100%;height:auto;max-height:82vh;object-fit:contain;border-radius:18px;box-shadow:0 24px 70px rgba(0,0,0,.5)}
+.avatar-dialog-close{position:absolute;top:-14px;right:-14px;width:40px;height:40px;border-radius:50%;border:0;
+  background:#fffaec;color:#2d2d2d;font-size:1.6rem;line-height:1;cursor:pointer;box-shadow:0 6px 16px rgba(0,0,0,.35)}
+@media (max-width:600px){.avatar-dialog-close{top:8px;right:8px}}
 .profile-hero-text{display:grid;gap:6px;justify-items:start;min-width:0}
 .profile-hero .page-title{overflow-wrap:anywhere}
 .profile-hero .profile-handle{margin:-2px 0 2px;color:#f1e3c4;font-weight:700}
